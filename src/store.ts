@@ -17,7 +17,7 @@
  */
 
 import { chmod, mkdir, readFile, rm } from 'node:fs/promises'
-import { basename, dirname, join } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { dshHomePath } from './home-paths.ts'
 import {
@@ -30,6 +30,20 @@ import {
   type EncryptedBlob,
   type KdfParams,
 } from './crypto.ts'
+
+/** Successful encrypted document writes, observed by opt-in backup automation. */
+const persistObservers = new Set<(path: string) => void>()
+export function onVaultPersist(observer: (path: string) => void): () => void {
+  persistObservers.add(observer)
+  return () => { persistObservers.delete(observer) }
+}
+
+/** Signal a successful encrypted replacement, including backup restoration. */
+export function notifyVaultPersist(path: string): void {
+  for (const observer of persistObservers) {
+    try { observer(resolve(path)) } catch { /* independent automation */ }
+  }
+}
 
 /** JSON-safe value usable inside an entry's arbitrary `fields` map. */
 export type FieldValue = string | number | boolean | null | FieldValue[] | { [key: string]: FieldValue }
@@ -1085,6 +1099,7 @@ export class VaultStore {
     this.kdf = newKdf
     this.key?.fill(0)
     this.key = newKey
+    notifyVaultPersist(this.path)
     return { n: newKdf.n }
   }
 
@@ -1143,6 +1158,9 @@ export class VaultStore {
           dirMode: 0o700,
         })
       })
+      // Notification is after the atomic write, never exposes decrypted data,
+      // and observer failures must not turn a successful save into an error.
+      notifyVaultPersist(this.path)
       // Mutations flush the audit sidecar with the document so the trail on
       // disk never lags the entries behind it.
       await this.flushAuditLog()

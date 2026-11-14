@@ -5,12 +5,16 @@
  */
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
-import type { PropsLocale, PropsRuntime, InjectFace, TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
+import type { VaultTranslate } from './host-contracts.ts'
 import type { VaultLocaleKey } from './locales.ts'
+import type { CloudBackupSettings, CloudBackupView } from '../cloud-backup-types.ts'
+import { CloudBackupPanel } from './CloudBackupPanel.tsx'
 import { siteGlyph } from './site-icons.ts'
 import { judgePasswordRisk } from './password-risk.ts'
 import { localDateTimeValue, templateHints, templateKind } from './editor-form.ts'
 import { strengthTone, strengthUnits, strengthWidthPercent } from './strength-stars.ts'
+import { useWorkbenchDialogs } from './workbench/useWorkbenchDialogs.tsx'
+import type { VaultTab } from './workbench/workbench-model.ts'
 import css from './VaultSection.module.css'
 
 /** Wire shapes shared with the host gateway (mirror of src/index.ts types). */
@@ -81,7 +85,9 @@ export type VaultPatch = Partial<Omit<VaultFullWire, 'id'>>
 
 /** Registration-side business face supplied by the plugin entry. */
 export interface VaultSectionInjected {
-  t: TranslateNS<'settings.vault'>
+  t: VaultTranslate
+  setupStatus?: () => Promise<{ configured: boolean; exists: boolean }>
+  openWithPassword?: (password: string) => Promise<{ locked: boolean; entries: number }>
   config: () => Promise<{ accessMode: 'readonly' | 'ask' | 'auto'; autoCapture: boolean; autoLockSeconds: number; toolProfile: 'basic' | 'standard' | 'full' | 'custom'; toolGroups: string[] }>
   setToolProfile: (profile: 'basic' | 'standard' | 'full' | 'custom', groups?: string[]) => Promise<{ toolProfile: 'basic' | 'standard' | 'full' | 'custom'; tools: number; toolGroups: string[] }>
   setAccessMode: (mode: 'readonly' | 'ask' | 'auto') => Promise<{ accessMode: 'readonly' | 'ask' | 'auto'; autoCapture: boolean; autoLockSeconds: number; toolProfile: 'basic' | 'standard' | 'full' | 'custom'; toolGroups: string[] }>
@@ -101,6 +107,10 @@ export interface VaultSectionInjected {
   recent: () => Promise<unknown[]>
   backupStatus: () => Promise<{ daysSinceBackup: number; backups: number }>
   backup: (maxBackups?: number) => Promise<{ path: string; kept: number; pruned: number }>
+  /** Optional so older hosts and injected fixtures keep working. */
+  cloudBackup?: () => Promise<CloudBackupView>
+  setCloudBackup?: (settings: CloudBackupSettings) => Promise<CloudBackupView>
+  runCloudBackup?: () => Promise<CloudBackupView>
   health: () => Promise<{ weak: unknown[]; reused: unknown[]; strength: { weak: number; fair: number; strong: number }; no2fa: unknown[]; httpSites: unknown[]; score: number; verdict: string }>
   duplicates: () => Promise<{ groups: number }>
   duplicateGroups: () => Promise<Array<Array<{ id: string; title: string }>>>
@@ -180,10 +190,21 @@ export type VaultSectionTypes = {
 }
 
 /** Full component props assembled by the Settings slot renderer. */
-export type VaultSectionProps =
-  PropsRuntime<'settings.section'>
-  & PropsLocale<'settings.vault'>
-  & InjectFace<VaultSectionInjected>
+/** Sanitized workbench projection. No entry secrets or editor drafts. */
+export interface VaultWorkbenchSnapshot {
+  busy: boolean; locked: boolean; count: number; vaultName: string; accessMode: string; editorOpen: boolean
+  ready: boolean; message: string | null; backups: number; weak: number; reused: number; score: number | null
+  activity: Array<{ action: string; title: string; at: number }>
+}
+export interface VaultWorkbenchCommand { id: number; kind: 'create' | 'search' | 'refresh' | 'lock' | 'switch'; value?: string }
+export interface VaultEmbeddedProps {
+  embedded?: boolean
+  activeTab?: VaultTab
+  onNavigate?: (tab: VaultTab) => void
+  onStatusChange?: (snapshot: VaultWorkbenchSnapshot) => void
+  command?: VaultWorkbenchCommand | null
+}
+export type VaultSectionProps = VaultSectionInjected & VaultEmbeddedProps
 
 /** The editable form fields we render (subset of the full wire). */
 type FormFields = {
@@ -437,7 +458,7 @@ function templateLabel(name: string): string {
 /** How long ago a past timestamp was, e.g. "3 分钟前". Empty for unusable
  * input; the absolute timestamp stays the visible text and this is its hover
  * hint, so a precise date and a quick "how recent" read never compete. */
-function relativeAge(ts: number, t: TranslateNS<'settings.vault'>, now = Date.now()): string {
+function relativeAge(ts: number, t: VaultTranslate, now = Date.now()): string {
   if (!Number.isFinite(ts) || ts <= 0) return ''
   const minutes = Math.floor(Math.max(0, now - ts) / 60_000)
   if (minutes < 1) return t('relJustNow')
@@ -450,6 +471,11 @@ function relativeAge(ts: number, t: TranslateNS<'settings.vault'>, now = Date.no
 /** Render the Vault settings section. */
 export function VaultSection(props: VaultSectionProps): ReactNode {
   const { t, config, setAccessMode, setAutoCapture, setAutoLock, list, search, get, add, update, remove, purge, trash, rotation, health, duplicates, duplicateGroups, merge, history, stats, backupStatus, backup, recent, restore, undeleteAll, totp, status, switchVault, listVaults, touch, setFavorite, setToolProfile, attachments, detach, attach, downloadAttachment, verifyAll, breachCheck, generatePassword, strength, generateUsername, templates, saveTemplate, lock, totpUri, tags, renameTag, removeTag, generatorHistory, backups, deleteBackup, restoreBackup, importChrome, importFirefox, import1password, importManagerCsv, previewImportCsv, importEnpass, importBitwarden, import1pif, importKeePassXml, importKdbx, importBitwardenEncrypted, keychainImport, searchSystem, sessionOpen, sessionCollect, sessionClose, sessionListOpen, sessionListSaved, sessionSave, sessionExport, sessionGet, sessionPrune, passwordHistory, passwordRollback, vaultRename, vaultDelete, watchtower, export1pux, exportBitwarden, exportCsv, recoveryCode, verifyRecovery, recoveryStatus, unlock } = props
+  const { cloudBackup, setCloudBackup, runCloudBackup } = props
+  const sectionRef = useRef<HTMLElement | null>(null)
+  const editorRef = useRef<HTMLDivElement | null>(null)
+  const editorOpener = useRef<HTMLElement | null>(null)
+  const dialogs = useWorkbenchDialogs(t, sectionRef)
   const searchId = useId()
   const searchRef = useRef<HTMLInputElement | null>(null)
   const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent)
@@ -555,7 +581,14 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
   }, [rowDensity])
   const [dueOnly, setDueOnly] = useState(false)
   const [issueOnly, setIssueOnly] = useState(false)
-  const [activeTab, setActiveTab] = useState<'entries' | 'security' | 'transfer' | 'backup' | 'permissions' | 'sessions' | 'audit' | 'trash'>('entries')
+  const [localTab, setLocalTab] = useState<VaultTab>('entries')
+  const activeTab = props.activeTab ?? localTab
+  const [backupVisited, setBackupVisited] = useState(false)
+  useEffect(() => { if (activeTab === 'backup') setBackupVisited(true) }, [activeTab])
+  const setActiveTab = useCallback((tab: VaultTab): void => {
+    if (props.onNavigate) props.onNavigate(tab)
+    else setLocalTab(tab)
+  }, [props.onNavigate])
   const [policy, setPolicy] = useState<{ accessMode: 'readonly' | 'ask' | 'auto'; autoCapture: boolean; autoLockSeconds: number; toolProfile: 'basic' | 'standard' | 'full' | 'custom'; toolGroups: string[] } | null>(null)
   const [trashEntries, setTrashEntries] = useState<VaultSummaryWire[]>([])
   const [report, setReport] = useState<{ rotation: unknown[]; weak: unknown[]; reused: unknown[]; strength: { weak: number; fair: number; strong: number } | null; no2fa: unknown[]; httpSites: unknown[]; score: number; verdict: string } | null>(null)
@@ -589,6 +622,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
   const [dupGroups, setDupGroups] = useState<number>(0)
   const [dupList, setDupList] = useState<Array<Array<{ id: string; title: string }>>>([])
   const [locked, setLocked] = useState(false)
+  const [cloudStatusReady, setCloudStatusReady] = useState(false)
   const [vaults, setVaults] = useState<Array<{ name: string; active: boolean; entries?: number }>>([])
   const [audit, setAudit] = useState<Array<{ id: string; title: string; issues: string[] }>>([])
   const [breach, setBreach] = useState<{ checked: number; pwned: Array<{ id: string; title: string; count: number }>; weak: Array<{ id: string; title: string }>; offline: boolean } | null>(null)
@@ -652,6 +686,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
   // unsaved edits are never lost by a stray Esc).
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
+      if (props.embedded || (event.target instanceof Element && event.target.closest('[data-vault-dialog]'))) return
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault()
         setActiveTab('entries')
@@ -680,7 +715,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
     // closes on Escape in bubble phase), so our open UI can consume the key.
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
-  }, [openMenuId, expandedId, importPreview, tagManagerOpen])
+  }, [openMenuId, expandedId, importPreview, tagManagerOpen, props.embedded])
 
   /** Apply a catalog template. The template only carries the KIND plus hint
    * texts ("expiry epoch millis", "PEM private key"): the hints become
@@ -712,7 +747,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
 
   /** Save the current form as a reusable template. */
   async function saveAsTemplate(): Promise<void> {
-    const name = window.prompt(t('tplNamePrompt'))
+    const name = await dialogs.prompt(t('tplNamePrompt'))
     if (!name) return
     const fields: Record<string, string> = {}
     for (const key of ['username', 'email', 'phone', 'host', 'port', 'url', 'notes', 'icon', 'color',
@@ -727,6 +762,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
 
   /** Switch the active vault and reload everything. */
   async function switchVaultTo(name: string): Promise<void> {
+    setCloudStatusReady(false)
     setBusy(true)
     setMessage(null)
     try {
@@ -736,7 +772,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
       void backups(20).then(setBackupList).catch(() => {})
       void backupStatus().then(bk => setBackupInfo(bk)).catch(() => {})
       void refresh()
-      status().then(value => setLocked(value.locked)).catch(() => {})
+      status().then(value => { setLocked(value.locked); setCloudStatusReady(true) }).catch(() => {})
     } catch (err) {
       setMessage(errText(err))
     } finally {
@@ -746,7 +782,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
 
   /** Delete one backup file (confirms first). */
   async function deleteBackupFile(b: { path: string }): Promise<void> {
-    if (!window.confirm(t('backupDeleteConfirm'))) return
+    if (!(await dialogs.confirm(t('backupDeleteConfirm')))) return
     setBusy(true)
     setMessage(null)
     try {
@@ -768,7 +804,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
   /** Rename the active (or picked) vault. */
   async function runVaultRename(): Promise<void> {
     const current = vaultMgtTarget !== '' ? vaultMgtTarget : 'default'
-    const target = window.prompt(`${t('vaultRenamePrompt')} (${current})`)
+    const target = await dialogs.prompt(`${t('vaultRenamePrompt')} (${current})`)
     if (target === null || target.trim() === '' || target.trim() === current) return
     setBusy(true)
     setMessage(null)
@@ -786,7 +822,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
 
   /** Create a brand-new empty vault by switching to a fresh name. */
   async function runVaultCreate(): Promise<void> {
-    const name = window.prompt(t('vaultNewPrompt'))
+    const name = await dialogs.prompt(t('vaultNewPrompt'))
     if (name === null) return
     const clean = name.trim()
     if (clean.length === 0) { setMessage(t('errPathEmpty')); return }
@@ -801,7 +837,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
   /** Delete a picked vault (confirms first; default vault cannot be deleted). */
   async function runVaultDelete(name: string): Promise<void> {
     if (name === 'default') { setMessage(t('vaultDeleteDefault')); return }
-    if (!window.confirm(t('vaultDeleteConfirm').replace('{name}', name))) return
+    if (!(await dialogs.confirm(t('vaultDeleteConfirm').replace('{name}', name)))) return
     setBusy(true)
     setMessage(null)
     try {
@@ -819,7 +855,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
 
   /** Import from Firefox (prompts for the primary password when one is set). */
   async function runFirefoxImport(): Promise<void> {
-    const mp = window.prompt(t('firefoxMasterPw'))
+    const mp = await dialogs.prompt(t('firefoxMasterPw'), '', { password: true })
     if (mp === null) return
     setBusy(true)
     setMessage(null)
@@ -837,7 +873,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
   /** Import from Chrome / Keychain with a confirmation about keychain prompts. */
   async function runSystemImport(source: 'chrome' | 'keychain', preview: boolean): Promise<void> {
     if (source === 'keychain' && !preview) {
-      const ok = window.confirm(t('keychainPromptWarn'))
+      const ok = await dialogs.confirm(t('keychainPromptWarn'))
       if (!ok) return
     }
     setBusy(true)
@@ -857,7 +893,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
 
   /** Import a 1Password 1PUX file (path entered by the user). */
   async function runImport1password(): Promise<void> {
-    const path = window.prompt(t('import1passwordPrompt'))
+    const path = await dialogs.prompt(t('import1passwordPrompt'))
     if (path === null || path.trim() === '') return
     setBusy(true)
     setMessage(null)
@@ -889,14 +925,14 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
 
   /** Preview a file-based import: prompt for the path, then dry-run. */
   async function runFilePreview(promptKey: string, run: (path: string, overwrite: boolean, dryRun: boolean) => Promise<{ note: string }>): Promise<void> {
-    const path = window.prompt(t(promptKey as never))
+    const path = await dialogs.prompt(t(promptKey as never))
     if (path === null || path.trim() === '') return
     await runImportPreview(() => run(path.trim(), false, true))
   }
 
   /** Import a password-manager CSV file (Dashlane/NordPass/Keeper). */
   async function runImportManagerCsv(): Promise<void> {
-    const path = window.prompt(t('importManagerCsvPrompt'))
+    const path = await dialogs.prompt(t('importManagerCsvPrompt'))
     if (path === null || path.trim() === '') return
     setBusy(true)
     setMessage(null)
@@ -916,7 +952,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
    * (titles/usernames only, never passwords) with a confirm before commit —
    * 1Password/Bitwarden-style import safety. */
   async function runCsvImportPreview(): Promise<void> {
-    const path = window.prompt(t('importManagerCsvPrompt'))
+    const path = await dialogs.prompt(t('importManagerCsvPrompt'))
     if (path === null || path.trim() === '') return
     setBusy(true)
     setMessage(null)
@@ -950,7 +986,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
 
   /** Import an Enpass JSON export (path entered by the user). */
   async function runImportEnpass(): Promise<void> {
-    const path = window.prompt(t('importEnpassPrompt'))
+    const path = await dialogs.prompt(t('importEnpassPrompt'))
     if (path === null || path.trim() === '') return
     setBusy(true)
     setMessage(null)
@@ -968,7 +1004,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
 
   /** Import a Bitwarden JSON export (path entered by the user). */
   async function runImportBitwarden(): Promise<void> {
-    const path = window.prompt(t('importBitwardenPrompt'))
+    const path = await dialogs.prompt(t('importBitwardenPrompt'))
     if (path === null || path.trim() === '') return
     setBusy(true)
     setMessage(null)
@@ -986,9 +1022,9 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
 
   /** Import a Bitwarden password-protected JSON export (asks for the export passphrase). */
   async function runImportBitwardenEncrypted(): Promise<void> {
-    const path = window.prompt(t('importBitwardenEncryptedPrompt'))
+    const path = await dialogs.prompt(t('importBitwardenEncryptedPrompt'))
     if (path === null || path.trim() === '') return
-    const password = window.prompt(t('importBitwardenEncryptedPasswordPrompt'))
+    const password = await dialogs.prompt(t('importBitwardenEncryptedPasswordPrompt'), '', { password: true })
     if (password === null) return
     setBusy(true)
     setMessage(null)
@@ -1006,7 +1042,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
 
   /** Import a legacy 1Password 1PIF export. */
   async function runImport1pif(): Promise<void> {
-    const path = window.prompt(t('import1pifPrompt'))
+    const path = await dialogs.prompt(t('import1pifPrompt'))
     if (path === null || path.trim() === '') return
     setBusy(true)
     setMessage(null)
@@ -1024,7 +1060,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
 
   /** Import a KeePass 2.x XML export. */
   async function runImportKeePassXml(): Promise<void> {
-    const path = window.prompt(t('importKeePassXmlPrompt'))
+    const path = await dialogs.prompt(t('importKeePassXmlPrompt'))
     if (path === null || path.trim() === '') return
     setBusy(true)
     setMessage(null)
@@ -1042,9 +1078,9 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
 
   /** Import a KeePass KDBX binary database (asks for path + optional password). */
   async function runImportKdbx(): Promise<void> {
-    const path = window.prompt(t('importKdbxPrompt'))
+    const path = await dialogs.prompt(t('importKdbxPrompt'))
     if (path === null || path.trim() === '') return
-    const password = window.prompt(t('importKdbxPasswordPrompt')) ?? ''
+    const password = await dialogs.prompt(t('importKdbxPasswordPrompt'), '', { password: true }) ?? ''
     setBusy(true)
     setMessage(null)
     try {
@@ -1062,7 +1098,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
   /** Export the vault as a 1Password 1PUX archive. */
   async function runExport1pux(): Promise<void> {
     const suggested = t('exportDefaultPath').replace('{file}', `${new Date().toISOString().slice(0, 10)}.1pux`)
-    const path = window.prompt(`${t('export1puxPrompt')}\n${t('exportPathHint')}: ${suggested}`, suggested)
+    const path = await dialogs.prompt(`${t('export1puxPrompt')}\n${t('exportPathHint')}: ${suggested}`, suggested)
     if (path === null || path.trim() === '') return
     setBusy(true)
     setMessage(null)
@@ -1079,7 +1115,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
   /** Export the vault as a Bitwarden JSON document. */
   async function runExportBitwarden(): Promise<void> {
     const suggested = t('exportDefaultPath').replace('{file}', `${new Date().toISOString().slice(0, 10)}.json`)
-    const path = window.prompt(`${t('exportBitwardenPrompt')}\n${t('exportPathHint')}: ${suggested}`, suggested)
+    const path = await dialogs.prompt(`${t('exportBitwardenPrompt')}\n${t('exportPathHint')}: ${suggested}`, suggested)
     if (path === null || path.trim() === '') return
     setBusy(true)
     setMessage(null)
@@ -1096,7 +1132,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
   /** Export entries as CSV with the user-selected columns. */
   async function runExportCsv(): Promise<void> {
     const suggested = t('exportDefaultPath').replace('{file}', `${new Date().toISOString().slice(0, 10)}.csv`)
-    const path = window.prompt(`${t('exportCsvPrompt')}\n${t('exportPathHint')}: ${suggested}`, suggested)
+    const path = await dialogs.prompt(`${t('exportCsvPrompt')}\n${t('exportPathHint')}: ${suggested}`, suggested)
     if (path === null || path.trim() === '') return
     if (exportFields.length === 0) { setMessage(t('exportNoFields')); return }
     setBusy(true)
@@ -1128,7 +1164,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
 
   /** Rename a tag across all entries (Bitwarden-style tag merge). */
   async function renameTagAll(from: string): Promise<void> {
-    const to = window.prompt(`${t('tagRenamePrompt')} ${from}`)
+    const to = await dialogs.prompt(`${t('tagRenamePrompt')} ${from}`)
     if (!to || to.trim().length === 0 || to.trim() === from) return
     await renameTag(from, to.trim())
     await tags().then(setTagList).catch(() => {})
@@ -1269,9 +1305,9 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
 
   /** Restore the vault from a backup file (asks for confirmation first). */
   async function restoreBackupFrom(b: { path: string; at: number }): Promise<void> {
-    const mode = window.confirm(t('backupRestoreModeMerge'))
+    const mode = await dialogs.confirm(t('backupRestoreModeMerge'))
       ? 'merge'
-      : window.confirm(t('backupRestoreModeReplace')) ? 'replace' : null
+      : await dialogs.confirm(t('backupRestoreModeReplace')) ? 'replace' : null
     if (mode === null) return
     setBusy(true)
     setMessage(null)
@@ -1318,7 +1354,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
     if (readonly) { setMessage(t('sessionReadOnly')); return }
     let title = (sessionTitles[sessionId] ?? '').trim()
     if (title.length === 0) {
-      const asked = window.prompt(`${t('sessionSaveTitle')} ${t('sessionNamePlaceholder')}`)
+      const asked = await dialogs.prompt(`${t('sessionSaveTitle')} ${t('sessionNamePlaceholder')}`)
       if (asked === null) return
       title = asked.trim()
       if (title.length === 0) return
@@ -1381,7 +1417,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
 
   /** Remove expired cookies from a saved session (confirms first). */
   async function runSessionPrune(id: string): Promise<void> {
-    if (!window.confirm(t('sessionPruneConfirm'))) return
+    if (!(await dialogs.confirm(t('sessionPruneConfirm')))) return
     setBusy(true)
     setMessage(null)
     try {
@@ -1397,7 +1433,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
 
   /** Generate a one-time recovery code and show it once (confirm first). */
   async function runRecoveryCode(): Promise<void> {
-    if (!window.confirm(t('recoveryCodeConfirm'))) return
+    if (!(await dialogs.confirm(t('recoveryCodeConfirm')))) return
     setBusy(true)
     setMessage(null)
     try {
@@ -1413,7 +1449,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
 
   /** Verify a recovery code typed by the user. */
   async function runVerifyRecovery(): Promise<void> {
-    const code = window.prompt(t('recoveryCodeVerifyPrompt'))
+    const code = await dialogs.prompt(t('recoveryCodeVerifyPrompt'), '', { password: true })
     if (code === null || code.trim() === '') return
     setBusy(true)
     setMessage(null)
@@ -1492,7 +1528,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
       () => { /* policy is informational; ignore failures */ },
     )
     void status().then(
-      value => { if (current) setLocked(value.locked) },
+      value => { if (current) { setLocked(value.locked); setCloudStatusReady(true) } },
       () => { /* ignore */ },
     )
     void listVaults().then(setVaults).catch(() => {})
@@ -1773,7 +1809,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
     const entryPw = editor.status === 'editing' ? (editor.entry?.password ?? '') : ''
     const typedPw = (form.password ?? '').trim()
     if (editor.status === 'editing' && typedPw.length > 0 && typedPw !== entryPw) {
-      if (!window.confirm(t('pwChangeConfirm'))) return
+      if (!(await dialogs.confirm(t('pwChangeConfirm')))) return
     }
     setBusy(true)
     setMessage(null)
@@ -1835,7 +1871,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
 
   /** Delete an entry after confirmation. */
   async function removeEntry(id: string): Promise<void> {
-    if (!window.confirm(t('deleteConfirm'))) return
+    if (!(await dialogs.confirm(t('deleteConfirm')))) return
     const title = state.status === 'ready' ? state.entries.find(e => e.id === id)?.title ?? '' : ''
     setBusy(true)
     try {
@@ -1864,7 +1900,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
   /** Delete all selected entries after one confirmation (bulk operation). */
   async function removeSelected(): Promise<void> {
     if (selectedIds.size === 0) return
-    if (!window.confirm(t('bulkDeleteConfirm').replace('{n}', String(selectedIds.size)))) return
+    if (!(await dialogs.confirm(t('bulkDeleteConfirm').replace('{n}', String(selectedIds.size))))) return
     const count = selectedIds.size
     setBusy(true)
     try {
@@ -1908,7 +1944,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
   async function bulkAddTag(): Promise<void> {
     const count = selectedIds.size
     if (count === 0) return
-    const asked = window.prompt(t('bulkTagPrompt'))
+    const asked = await dialogs.prompt(t('bulkTagPrompt'))
     if (asked === null) return
     const tag = asked.trim().replace(/^#/, '')
     if (tag.length === 0) return
@@ -1936,7 +1972,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
   /** Copy the titles of the selected entries as one line per entry. */
   /** Export the entries selected in bulk mode as a CSV to a user path. */
   async function exportSelectedCsv(): Promise<void> {
-    const picked = window.prompt(t('bulkExportPath'), `~/Downloads/dsh-vault-selected-${new Date().toISOString().slice(0, 10)}.csv`)
+    const picked = await dialogs.prompt(t('bulkExportPath'), `~/Downloads/dsh-vault-selected-${new Date().toISOString().slice(0, 10)}.csv`)
     if (picked === null) return
     const path = (picked ?? '').trim()
     if (path.length === 0) { setMessage(t('errPathEmpty')); return }
@@ -2106,7 +2142,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
   /** Roll the entry's password back to a history point. */
   async function rollbackPassword(at: number): Promise<void> {
     if (pwHistoryFor === null) return
-    if (!window.confirm(t('pwRollbackConfirm'))) return
+    if (!(await dialogs.confirm(t('pwRollbackConfirm')))) return
     setBusy(true)
     try {
       const r = await passwordRollback(pwHistoryFor, at)
@@ -2324,8 +2360,39 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
     return parts.join(' · ')
   }
 
+  const snapshotCallback = useRef(props.onStatusChange)
+  snapshotCallback.current = props.onStatusChange
+  useEffect(() => {
+    snapshotCallback.current?.({
+      busy, locked, count: Number(vaultStats?.total ?? (state.status === 'ready' ? state.entries.length : 0)),
+      vaultName: vaults.find(v => v.active)?.name ?? '', accessMode: policy?.accessMode ?? '',
+      editorOpen: editor.status !== 'closed', ready: state.status === 'ready', message,
+      backups: backupInfo?.backups ?? 0, weak: report?.weak.length ?? 0,
+      reused: report?.reused.length ?? 0, score: report?.score ?? null,
+      activity: recentEvents.slice(0, 12).map(event => ({ action: String(event.action ?? ''), title: String(event.title ?? ''), at: Number(event.at ?? 0) })),
+    })
+  }, [busy, locked, state, vaultStats, vaults, policy, editor.status, message, backupInfo, report, recentEvents])
+  const lastCommand = useRef<number | null>(null)
+  useEffect(() => {
+    const command = props.command
+    if (!command || command.id === lastCommand.current) return
+    lastCommand.current = command.id
+    if (command.kind === 'create' && !busy && !readonly && !locked) startCreate()
+    if (command.kind === 'search') searchRef.current?.focus()
+    if (command.kind === 'refresh') void refresh()
+    if (command.kind === 'lock' && !busy) void lockNow()
+    if (command.kind === 'switch' && command.value && !busy && !locked) void switchVaultTo(command.value)
+  }, [props.command])
+  useEffect(() => {
+    if (!props.embedded || editor.status === 'closed') return
+    editorOpener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    editorRef.current?.focus()
+    return () => { if (editorOpener.current?.isConnected) editorOpener.current.focus() }
+  }, [editor.status, props.embedded])
+
   return (
-    <section className={css.section} aria-labelledby="vault-heading">
+    <section ref={sectionRef} className={props.embedded ? `${css.section} ${css.embedded}` : css.section} aria-label={t('heading')} data-editor-open={editor.status !== 'closed' ? '' : undefined}>
+      {!props.embedded && <>
       <header className={css.vaultHeader}>
         <h2 id="vault-heading">{t('heading')}</h2>
         {vaults.length > 0 && (
@@ -2353,6 +2420,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
         >{message ?? ''}</span>
       </header>
       <p className={css.intro}>{t('intro')}</p>
+      </>}
 
       {locked && (
         <div className={css.lockedBanner} role="alert">
@@ -2361,7 +2429,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
         </div>
       )}
 
-      <nav className={css.tabs} aria-label={t('sectionTabs')}>
+      {!props.embedded && <nav className={css.tabs} aria-label={t('sectionTabs')}>
         {(['entries', 'security', 'transfer', 'backup', 'permissions', 'sessions', 'audit', 'trash'] as const).map(tab => (
           <button
             key={tab}
@@ -2370,9 +2438,9 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
             onClick={() => setActiveTab(tab)}
           >{t(TAB_KEYS[tab]!)}</button>
         ))}
-      </nav>
+      </nav>}
 
-      {activeTab === 'entries' && (<div className={css.tabPane}>
+      {(props.embedded || activeTab === 'entries') && (<div className={css.tabPane} hidden={activeTab !== 'entries'} data-vault-pane="entries">
       <div className={css.toolbar}>
         <div className={css.toolbarMain}>
           {locked && (
@@ -2487,8 +2555,8 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
                   className={css.dupMerge}
                   title={t('tagRenameHint')}
                   disabled={busy || readonly || locked}
-                  onClick={() => {
-                    const asked = window.prompt(`${t('tagRenamePrompt')} ${tag.name}`, tag.name)
+                  onClick={async () => {
+                    const asked = await dialogs.prompt(`${t('tagRenamePrompt')} ${tag.name}`, tag.name)
                     if (asked === null || asked.trim() === '' || asked.trim() === tag.name) return
                     setBusy(true)
                     void renameTag(tag.name, asked.trim()).then(() => {
@@ -2504,8 +2572,8 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
                   className={css.dangerButton}
                   title={t('tagRemoveHint')}
                   disabled={busy || readonly || locked}
-                  onClick={() => {
-                    if (!window.confirm(t('tagRemoveConfirm').replace('{name}', tag.name))) return
+                  onClick={async () => {
+                    if (!(await dialogs.confirm(t('tagRemoveConfirm').replace('{name}', tag.name)))) return
                     setBusy(true)
                     void removeTag(tag.name).then(r => {
                       void tags().then(setTagList).catch(() => {})
@@ -2583,7 +2651,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
           <button type="button" className={css.retryButton} onClick={() => void refresh()}>{t('retry')}</button>
         </p>
       )}
-      {activeTab === 'entries' && (<div className={css.tabPane}>
+      {(props.embedded || activeTab === 'entries') && (<div className={css.tabPane} hidden={activeTab !== 'entries'} data-vault-pane="entries">
       {state.status === 'ready' && state.entries.length > 0 && (
         <div className={css.healthBar}>
           {vaultStats !== null && typeof vaultStats.withTotp === 'number' && vaultStats.withTotp > 0 && (
@@ -2647,7 +2715,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
       )}
       </div>)}
 
-      {activeTab === 'security' && (<div className={css.tabPane}>
+      {(props.embedded || activeTab === 'security') && (<div className={css.tabPane} hidden={activeTab !== 'security'} data-vault-pane="security">
       {recentEntries.length > 0 && (
         <div className={css.reportBox}>
           <p className={css.reportTitle}>{t('recentlyAdded')}</p>
@@ -2729,7 +2797,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
 
       </div>)}
 
-      {activeTab === 'transfer' && (<div className={css.tabPane}>
+      {(props.embedded || activeTab === 'transfer') && (<div className={css.tabPane} hidden={activeTab !== 'transfer'} data-vault-pane="transfer">
       <div className={css.reportBox}>
         <p className={css.reportTitle}>{t('systemSearch')}</p>
         <div className={css.dupGroup}>
@@ -2867,7 +2935,20 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
       </div>
       </div>)}
 
-      {activeTab === 'backup' && (<div className={css.tabPane}>
+      {(props.embedded || activeTab === 'backup') && (<div className={css.tabPane} hidden={activeTab !== 'backup'} data-vault-pane="backup">
+      {(activeTab === 'backup' || backupVisited) && cloudBackup && setCloudBackup && runCloudBackup && (
+        <CloudBackupPanel
+          key={vaults.find(v => v.active)?.name ?? 'current'}
+          t={t}
+          cloudBackup={cloudBackup}
+          setCloudBackup={setCloudBackup}
+          runCloudBackup={runCloudBackup}
+          readonly={readonly}
+          locked={locked}
+          unavailable={busy || policy === null || !cloudStatusReady}
+          vaultName={vaults.find(v => v.active)?.name ?? ''}
+        />
+      )}
       <div className={css.reportBox}>
         <p className={css.reportTitle}>{t('backupTitle')}</p>
         <p className={css.reportSub}>{t('backupHint')}</p>
@@ -2913,7 +2994,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
       )}
       </div>)}
 
-      {activeTab === 'sessions' && (<div className={css.tabPane}>
+      {(props.embedded || activeTab === 'sessions') && (<div className={css.tabPane} hidden={activeTab !== 'sessions'} data-vault-pane="sessions">
         <div className={css.reportBox}>
           <p className={css.reportTitle}>{t('tabSessions')}</p>
           <p className={css.reportSub}>{t('sessionsIntro')}</p>
@@ -3072,7 +3153,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
         </div>
       </div>)}
 
-      {activeTab === 'permissions' && (<div className={css.tabPane}>
+      {(props.embedded || activeTab === 'permissions') && (<div className={css.tabPane} hidden={activeTab !== 'permissions'} data-vault-pane="permissions">
       {vaults.length > 0 && (
         <div className={css.reportBox}>
           <p className={css.reportTitle}>{t('vaultManageTitle')}</p>
@@ -3270,7 +3351,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
       )}
       </div>)}
 
-      {activeTab === 'audit' && (<div className={css.tabPane}>
+      {(props.embedded || activeTab === 'audit') && (<div className={css.tabPane} hidden={activeTab !== 'audit'} data-vault-pane="audit">
         <div className={css.reportBox}>
           <p className={css.reportTitle}>{t('recentActivity')}</p>
           <p className={css.reportSub}>{t('auditSecretNote')}</p>
@@ -3333,7 +3414,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
         </div>
       </div>)}
 
-      {activeTab === 'trash' && (<div className={css.tabPane}>
+      {(props.embedded || activeTab === 'trash') && (<div className={css.tabPane} hidden={activeTab !== 'trash'} data-vault-pane="trash">
       {trashEntries.length === 0 && (
         <p className={css.empty}>
           {t('trashEmpty')}<br />
@@ -3357,8 +3438,8 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
                 <button
                   type="button"
                   className={css.dangerButton}
-                  onClick={() => {
-                    if (!window.confirm(t('purgeOneConfirm').replace('{name}', entry.title))) return
+                  onClick={async () => {
+                    if (!(await dialogs.confirm(t('purgeOneConfirm').replace('{name}', entry.title)))) return
                     void purge(entry.id).then(() => { void trash().then(setTrashEntries); void refresh() })
                   }}
                   disabled={busy || readonly || locked}
@@ -3387,8 +3468,8 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
           <button
             type="button"
             className={css.dangerButton}
-            onClick={() => {
-              if (!window.confirm(t('clearTrashConfirm'))) return
+            onClick={async () => {
+              if (!(await dialogs.confirm(t('clearTrashConfirm')))) return
               setBusy(true)
               void Promise.all(trashEntries.map(e => purge(e.id))).then(() => {
                 void trash().then(setTrashEntries)
@@ -3402,7 +3483,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
       )}
       </div>)}
 
-      {activeTab === 'entries' && (<div className={css.tabPane}>
+      {(props.embedded || activeTab === 'entries') && (<div className={css.tabPane} hidden={activeTab !== 'entries'} data-vault-pane="entries">
       {state.status === 'ready' && filteredCount(state.entries, kindFilter, tagFilter, favOnly, dueOnly, dueMap, issueOnly, watchMap, reportFilter, reportIdSets[reportFilter]) > visibleCount && (
         <button
           type="button"
@@ -3824,7 +3905,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
       )}
       </div>)}
 
-      {activeTab === 'security' && (<div className={css.tabPane}>
+      {(props.embedded || activeTab === 'security') && (<div className={css.tabPane} hidden={activeTab !== 'security'} data-vault-pane="security">
       {state.status === 'ready' && (
         <div className={css.healthBar}>
           {vaultStats !== null && typeof vaultStats.total === 'number' && (
@@ -3921,16 +4002,24 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
 
       {editor.status !== 'closed' && (
         <div
+          ref={editorRef}
+          tabIndex={-1}
           className={css.editor}
-          role="dialog"
+          role={props.embedded ? 'region' : 'dialog'}
           aria-label={editor.status === 'creating' ? t('add') : t('edit')}
           onKeyDown={event => {
+            // Unsaved secrets must not be discarded by the host settings Escape handler.
+            if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); return }
             if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
               event.preventDefault()
               void save()
             }
           }}
         >
+          {props.embedded && <header className={css.editorHead}>
+            <button type="button" onClick={() => setEditor({ status: 'closed' })} disabled={busy}>{t('cancel')}</button>
+            <strong>{editor.status === 'creating' ? t('add') : t('edit')}</strong>
+          </header>}
           <div className={css.editorBody}>
             <div className={css.genOpts}>
               <label className={css.genOptRow}>
@@ -4322,6 +4411,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
           </div>
         </div>
       )}
+      {dialogs.node}
     </section>
   )
 }

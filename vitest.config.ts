@@ -33,6 +33,8 @@ function standardDecoratorPlugin() {
 export default {
   plugins: [standardDecoratorPlugin()],
   test: {
+    // Keep native Windows hosts responsive alongside the running DSH service.
+    maxWorkers: 2,
     include: ['tests/**/*.spec.ts'],
   },
 }

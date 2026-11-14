@@ -20,7 +20,7 @@ function collect(dir: string, extensions: string[]): Record<string, string> {
       const full = join(current, entry.name)
       if (entry.isDirectory()) { walk(full); continue }
       if (!extensions.some(ext => entry.name.endsWith(ext))) continue
-      out[relative(root, full)] = readFileSync(full, 'utf8')
+      out[relative(root, full).split('\\').join('/')] = readFileSync(full, 'utf8')
     }
   }
   walk(resolve(root, dir))

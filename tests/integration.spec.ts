@@ -15,7 +15,9 @@ import { basename, join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
-import { ToolCallId } from '@deepseek-ai/dsh-llm'
+import type { ToolCallId as ToolCallIdType } from '@deepseek-ai/dsh-llm'
+// Published runtime exposes this as a branded type, not a value constructor.
+const ToolCallId = (value: string): ToolCallIdType => value as ToolCallIdType
 import * as VaultPlugin from '../src/index'
 
 const signal = new AbortController().signal
@@ -328,19 +330,22 @@ test('vault_totp rejects calls with a now override', async () => {
   })
 })
 
-test('vault requires a master password at configuration time', async () => {
+test('vault mounts before first-use GUI password setup without creating a vault', async () => {
   const ctx = new Context()
+  const dir = await mkdtemp(join(tmpdir(), 'vault-bootstrap-'))
   try {
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
-    await assert.rejects(
-      async () => { await ctx.plugin(VaultPlugin, {}) },
-      /configure masterPassword or masterPasswordEnv/,
-    )
+    await ctx.plugin(VaultPlugin, { path: join(dir, 'vault.json'), masterPasswordEnv: 'DSH_TEST_ABSENT_VAULT_ENV' })
+    const gateway = ctx.get('vault') as VaultPlugin.VaultGateway
+    assert.deepEqual(await gateway.setupStatus(), { configured: false, exists: false })
+    assert.deepEqual(await gateway.status(), { locked: true, entries: 0 })
+    assert.equal(existsSync(join(dir, 'vault.json')), false)
   } finally {
     ctx.registry.delete(VaultPlugin)
     ctx.registry.delete(ToolRuntime)
     ctx.registry.delete(SystemPrompt)
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 })
   }
 })
 
@@ -3042,7 +3047,7 @@ test('vault_session_import rejects duplicates and empty input', async () => {
   })
 })
 
-test('vault_session_* tool flow end-to-end (headless via tool param, no visible window)', async () => {
+test.skipIf(process.env.DSH_E2E_BROWSER !== '1')('vault_session_* tool flow end-to-end (headless via tool param, no visible window)', async () => {
   const { createServer } = await import('node:http')
   const { playwrightAvailable, resolveChromium, closeAllSessions } = await import('../src/session.ts')
   if (!playwrightAvailable() || resolveChromium() === undefined) return // no browser — skip silently

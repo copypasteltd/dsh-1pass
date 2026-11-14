@@ -27,5 +27,5 @@ test('a leading ~ is expanded and relative paths resolve against cwd', () => {
 })
 
 test('dshHomePath joins under the resolved home', () => {
-  expect(dshHomePath('vault', 'default.json')).toBe(join(resolve(join(homedir(), '.dsh')), 'vault', 'default.json'))
+  expect(dshHomePath('vault', 'default.json')).toBe(join(resolveDshHome(), 'vault', 'default.json'))
 })

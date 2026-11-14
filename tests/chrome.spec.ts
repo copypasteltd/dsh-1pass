@@ -1,6 +1,12 @@
 import { test, assert } from 'vitest'
 import { createCipheriv, pbkdf2Sync } from 'node:crypto'
-import { decryptChromeBlob } from '../src/chrome.ts'
+// These published fixtures encode Linux/macOS CBC, independently of the test host.
+const platformDescriptor = Object.getOwnPropertyDescriptor(process, 'platform')!
+let decryptChromeBlob: typeof import('../src/chrome.ts')['decryptChromeBlob']
+try {
+  Object.defineProperty(process, 'platform', { value: 'linux' })
+  ;({ decryptChromeBlob } = await import('../src/chrome.ts'))
+} finally { Object.defineProperty(process, 'platform', platformDescriptor) }
 
 test('chrome: decryptChromeBlob matches the reference AES-128-CBC scheme', () => {
   // Encode a password the way Chrome macOS does: PBKDF2(safe, saltysalt, 1003, 16) key,
@@ -24,7 +30,6 @@ test('chrome: decrypt scheme round-trips with the reference CBC parameters', () 
   const cipher = createCipheriv('aes-128-cbc', key, iv)
   const ct = Buffer.concat([cipher.update(Buffer.from('roundtrip-pw')), cipher.final()])
   const blob = Buffer.concat([Buffer.from('v10', 'latin1'), ct])
-  const { decryptChromeBlob } = require('../src/chrome.ts')
   assert.equal(decryptChromeBlob(blob, key), 'roundtrip-pw')
 })
 

@@ -25,7 +25,10 @@ import { readFile, writeFile, mkdir, readdir, unlink, rename as renameFile } fro
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { homedir } from 'node:os'
 import { existsSync, readdirSync, statSync } from 'node:fs'
-import { basename, dirname, join } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
+import { createCloudBackupManager, changeCloudBackupVault, onCloudVaultLifecycle, type CloudBackupManager } from './cloud-backup.ts'
+import type { CloudBackupSettings, CloudBackupView } from './cloud-backup-types.ts'
+import { onVaultPersist, notifyVaultPersist } from './store.ts'
 import { envLinesFor, shellQuote, type EnvExportable } from './env-export.ts'
 import { openVault, defaultVaultPath, type VaultEntry, type VaultEntryKind, type VaultEntryPatch, type VaultEntrySummary, type VaultStore, type CookieData } from './store.ts'
 import { totp, parseTotpSecret, hotp, base32Decode } from './totp.ts'
@@ -219,7 +222,7 @@ export function enabledGroups(profile: ToolProfile, customGroups: readonly strin
 }
 
 export async function apply(ctx: Context, config: Config): Promise<void> {
-  const masterPassword = resolveMasterPassword(config)
+  let masterPassword = resolveMasterPassword(config, false)
   /**
    * Every tool that writes to the vault store, its files or session metadata.
    * Kept in sync with the assertWritable(...) call sites so that ask-mode
@@ -361,6 +364,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   /** Ensure the shared store is open (lazily on first use, so a missing
    * master password fails at the first tool call with a clear message). */
   async function ensureStore(): Promise<VaultStore> {
+    if (masterPassword.length === 0) throw new Error('vault: open the password manager Settings page to create or unlock the vault first')
     const store = await sharedVaultStore(masterPassword, config)
     // Install the auto-lock policy once per store instance: a persisted
     // policy value (set from the Settings UI) wins, otherwise fall back to
@@ -4338,6 +4342,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     output: { schema: { type: 'object', additionalProperties: false, properties: { renamed: { type: 'boolean', required: true }, from: { type: 'string' }, to: { type: 'string' }, vaults: { type: 'array', items: { type: 'json' } }, note: { type: 'string' } } }, render: (_a, v) => [{ type: 'text', text: v.note ?? `renamed vault "${v.from}" -> "${v.to}"` }] },
     async execute(args) {
       assertWritable('vault_vault_rename')
+      await guardStore()
       const from = args.from.trim()
       const to = args.to.trim()
       if (!/^[a-zA-Z0-9._-]+$/.test(from) || !/^[a-zA-Z0-9._-]+$/.test(to)) {
@@ -4350,7 +4355,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       const target = join(dir, `${to}.json`)
       if (await existsFile(source) === false) throw new Error(`vault_vault_rename: vault "${from}" not found`)
       if (await existsFile(target)) throw new Error(`vault_vault_rename: vault "${to}" already exists`)
-      await renameFile(source, target)
+      await changeCloudBackupVault(source, target, () => renameFile(source, target))
       // Drop cached stores for both names so the next open reads the new file.
       sharedVaultStores.delete(`${target}\0${masterPassword}`)
       if (currentVaultName === from) currentVaultName = to
@@ -4372,6 +4377,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     output: { schema: { type: 'object', additionalProperties: false, properties: { deleted: { type: 'boolean', required: true }, name: { type: 'string' }, active: { type: 'string' }, vaults: { type: 'array', items: { type: 'json' } }, note: { type: 'string' } } }, render: (_a, v) => [{ type: 'text', text: v.note ?? `deleted vault "${v.name}"` }] },
     async execute(args) {
       assertWritable('vault_vault_delete')
+      await guardStore()
       const name = args.name.trim()
       if (args.confirm !== true) throw new Error('vault_vault_delete: pass confirm: true to delete a vault')
       if (!/^[a-zA-Z0-9._-]+$/.test(name)) {
@@ -4381,7 +4387,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       const dir = dirname(resolveVaultPath(config))
       const source = join(dir, `${name}.json`)
       if (await existsFile(source) === false) throw new Error(`vault_vault_delete: vault "${name}" not found`)
-      await unlink(source)
+      await changeCloudBackupVault(source, undefined, () => unlink(source))
       sharedVaultStores.delete(`${source}\0${masterPassword}`)
       if (currentVaultName === name) currentVaultName = 'default'
       const roster = await listVaultRoster(config)
@@ -4430,9 +4436,11 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
 
   ctx.plugin(VaultGateway, {
     masterPassword,
+    onPasswordOpened: (password: string) => { masterPassword = password },
     ...(config.path !== undefined ? { path: config.path } : {}),
     ...(config.name !== undefined ? { name: config.name } : {}),
     accessPolicy: policy,
+    ...(config.backupRetention !== undefined ? { backupRetention: config.backupRetention } : {}),
   })
 }
 
@@ -4449,25 +4457,156 @@ let reapplyToolProfile: (() => number) | undefined
 export class VaultGateway extends TypertRemoteService {
   static inject = ['tools']
 
-  private readonly masterPassword: string
+  private masterPassword: string
+  private readonly onPasswordOpened: ((password: string) => void) | undefined
+  private openingChain: Promise<unknown> = Promise.resolve()
   private readonly vaultPath: string | undefined
   private readonly vaultName: string | undefined
   private accessPolicy: AccessPolicy
   private readonly backupRetention: number
   private activeName: string | undefined
   private readonly genHistory: Array<{ password: string; at: number }> = []
+  private readonly cloudManagers = new Map<string, CloudBackupManager>()
+  private cloudDisposed = false
+  private readonly cloudPausedPaths = new Set<string>()
+  private readonly cloudDefaultMode: AccessMode
 
-  constructor(ctx: Context, config: Config & { accessPolicy?: AccessPolicy }) {
+  constructor(ctx: Context, config: Config & { accessPolicy?: AccessPolicy; onPasswordOpened?: (password: string) => void }) {
     super(ctx, 'vault')
-    this.masterPassword = config.masterPassword ?? resolveMasterPassword(config)
+    this.masterPassword = config.masterPassword ?? resolveMasterPassword(config, false)
+    this.onPasswordOpened = config.onPasswordOpened
     this.vaultPath = config.path
     this.vaultName = config.name
     this.activeName = config.name
     this.accessPolicy = config.accessPolicy ?? { mode: config.accessMode ?? 'ask', autoCapture: config.autoCapture ?? false }
     this.backupRetention = config.backupRetention ?? 10
+    this.cloudDefaultMode = config.accessMode ?? this.accessPolicy.mode
+    const root = resolve(this.vaultPath ?? defaultVaultPath(this.activeName))
+    const directory = dirname(root)
+    this.cloudForPath(root)
+    ctx.effect(() => {
+      const unsubscribe = onVaultPersist(path => {
+        if (this.cloudDisposed || this.cloudPausedPaths.has(path)) return
+        if (this.vaultPath !== undefined ? path === root : dirname(path) === directory) {
+          this.cloudForPath(path).notifyChange()
+        }
+      })
+      const unobserveLifecycle = onCloudVaultLifecycle(async (phase, paths) => {
+        for (const path of paths) {
+          if (this.vaultPath !== undefined ? path !== root : dirname(path) !== directory) continue
+          if (phase === 'pause') {
+            this.cloudPausedPaths.add(path)
+            const manager = this.cloudManagers.get(path)
+            this.cloudManagers.delete(path)
+            if (manager) await manager.dispose()
+          } else {
+            this.cloudPausedPaths.delete(path)
+            if (!this.cloudDisposed && existsSync(path)) this.cloudForPath(path)
+          }
+        }
+      })
+      // Resume schedules for named vaults even if their Settings page is not open.
+      if (this.vaultPath === undefined) {
+        void readdir(directory).then(names => {
+          if (this.cloudDisposed) return
+          for (const name of names) {
+            if (/^[A-Za-z0-9._-]+\.json$/.test(name) && !isNonVaultFile(name) && !isBackupFile(name)) this.cloudForPath(join(directory, name))
+          }
+        }).catch(() => {})
+      }
+      return async () => {
+        this.cloudDisposed = true
+        unsubscribe()
+        unobserveLifecycle()
+        await Promise.all([...this.cloudManagers.values()].map(manager => manager.dispose()))
+        this.cloudManagers.clear()
+        await this.openingChain
+        const password = this.masterPassword
+        this.masterPassword = ''
+        this.onPasswordOpened?.('')
+        for (const [key, store] of sharedVaultStores) {
+          const separator = key.indexOf('\0')
+          const path = key.slice(0, separator)
+          if (key.slice(separator + 1) !== password || (this.vaultPath !== undefined ? resolve(path) !== root : dirname(resolve(path)) !== directory)) continue
+          sharedVaultStores.delete(key)
+          try { await (await store).lock() } catch { /* failed openings have no key */ }
+        }
+      }
+    })
+  }
+
+  private cloudForPath(path: string): CloudBackupManager {
+    const key = resolve(path)
+    if (this.cloudDisposed || this.cloudPausedPaths.has(key)) throw new Error('Cloud backup is unavailable while the vault is changing.')
+    let manager = this.cloudManagers.get(key)
+    if (!manager) {
+      manager = createCloudBackupManager(key, async () => {
+        if (key === resolve(this.vaultPath ?? defaultVaultPath(this.activeName))) return this.accessPolicy.mode !== 'readonly'
+        return (await sharedAccessPolicy({ path: key, accessMode: this.cloudDefaultMode })).mode !== 'readonly'
+      })
+      this.cloudManagers.set(key, manager)
+    }
+    return manager
+  }
+
+  @Remote('cloudBackup')
+  async cloudBackup(): Promise<CloudBackupView> {
+    return this.cloudForPath(this.vaultPath ?? defaultVaultPath(this.activeName)).status()
+  }
+
+  @Remote('setCloudBackup')
+  async setCloudBackup(settings: CloudBackupSettings): Promise<CloudBackupView> {
+    this.assertWritable('setCloudBackup')
+    await this.guardedStore()
+    return this.cloudForPath(this.vaultPath ?? defaultVaultPath(this.activeName)).configure(settings)
+  }
+
+  @Remote('runCloudBackup')
+  async runCloudBackup(): Promise<CloudBackupView> {
+    this.assertWritable('runCloudBackup')
+    await this.guardedStore()
+    return this.cloudForPath(this.vaultPath ?? defaultVaultPath(this.activeName)).run()
+  }
+
+  /** GUI-only bootstrap; the model tool schema never accepts a master password. */
+  @Remote('setupStatus')
+  async setupStatus(): Promise<{ configured: boolean; exists: boolean }> {
+    if (this.cloudDisposed) throw new Error('vault: plugin is unavailable')
+    return { configured: this.masterPassword.length > 0, exists: await existsFile(this.vaultPath ?? defaultVaultPath(this.activeName)) }
+  }
+
+  @Remote('openWithPassword')
+  async openWithPassword(password: string): Promise<{ locked: boolean; entries: number }> {
+    if (typeof password !== 'string' || password.length === 0) throw new Error('vault: enter a nonempty master password')
+    const open = async (): Promise<{ locked: boolean; entries: number }> => {
+      if (this.cloudDisposed) throw new Error('vault: plugin is unavailable')
+      if (this.masterPassword.length > 0 && password !== this.masterPassword) throw new Error('vault: master password does not match the active vault')
+      const path = this.vaultPath ?? defaultVaultPath(this.activeName)
+      if (!await existsFile(path)) this.assertWritable('createVault')
+      const store = await sharedVaultStore(password, { path })
+      if (this.cloudDisposed) {
+        sharedVaultStores.delete(`${path}\0${password}`)
+        await store.lock()
+        throw new Error('vault: plugin is unavailable')
+      }
+      if (store.isLocked) await store.unlock()
+      if (this.cloudDisposed) {
+        sharedVaultStores.delete(`${path}\0${password}`)
+        await store.lock()
+        throw new Error('vault: plugin is unavailable')
+      }
+      this.masterPassword = password
+      this.onPasswordOpened?.(password)
+      return { locked: store.isLocked, entries: store.list().length }
+    }
+    const result = this.openingChain.then(open, open)
+    this.openingChain = result.catch(() => {})
+    return result
   }
 
   private async ensureStore(): Promise<VaultStore> {
+    if (this.cloudDisposed) throw new Error('vault: plugin is unavailable')
+    if (this.masterPassword.length === 0) throw new Error('vault: open the password manager Settings page to create or unlock the vault first')
     return sharedVaultStore(this.masterPassword, {
       ...(this.vaultPath !== undefined ? { path: this.vaultPath } : {}),
       ...(this.activeName !== undefined ? { name: this.activeName } : {}),
@@ -4598,7 +4737,7 @@ export class VaultGateway extends TypertRemoteService {
     for (const e of store.listTrash()) {
       if (await store.restore(e.id)) restored++
     }
-    if (restored > 0) void this.autoBackup()
+    if (restored > 0) await this.autoBackup()
     return { restored }
   }
 
@@ -4608,7 +4747,7 @@ export class VaultGateway extends TypertRemoteService {
     this.assertWritable('restore')
     const store = await this.guardedStore()
     const restored = await store.restore(id)
-    if (restored) void this.autoBackup()
+    if (restored) await this.autoBackup()
     return { restored }
   }
 
@@ -4619,7 +4758,7 @@ export class VaultGateway extends TypertRemoteService {
     this.assertWritable('purge')
     const store = await this.guardedStore()
     const purged = await store.purge(id)
-    if (purged) void this.autoBackup()
+    if (purged) await this.autoBackup()
     return { purged }
   }
 
@@ -5396,6 +5535,7 @@ export class VaultGateway extends TypertRemoteService {
   /** Vault lock/entry status for the UI banner. */
   @Remote('status')
   async status(): Promise<{ locked: boolean; entries: number }> {
+    if (this.masterPassword.length === 0) return { locked: true, entries: 0 }
     const store = await this.ensureStore()
     return { locked: store.isLocked, entries: store.isLocked ? 0 : store.list().length }
   }
@@ -5464,6 +5604,7 @@ export class VaultGateway extends TypertRemoteService {
   @Remote('vaultRename')
   async vaultRename(from: string, to: string): Promise<{ renamed: boolean; from?: string; to?: string; vaults: Array<{ name: string; active: boolean }>; note: string }> {
     this.assertWritable('vaultRename')
+    await this.guardedStore()
     if (!/^[a-zA-Z0-9._-]+$/.test(from) || !/^[a-zA-Z0-9._-]+$/.test(to)) {
       throw new Error('vaultRename: names may contain only letters, digits, . _ -')
     }
@@ -5476,7 +5617,7 @@ export class VaultGateway extends TypertRemoteService {
     const target = join(dir, `${to}.json`)
     if (!(await existsFile(source))) throw new Error(`vaultRename: vault "${from}" not found`)
     if (await existsFile(target)) throw new Error(`vaultRename: vault "${to}" already exists`)
-    await renameFile(source, target)
+    await changeCloudBackupVault(source, target, () => renameFile(source, target))
     sharedVaultStores.delete(`${target}\0${this.masterPassword}`)
     if (this.activeName === from) this.activeName = to
     const vaults = await listVaultRoster({ ...(this.vaultPath !== undefined ? { path: this.vaultPath } : {}) }, this.activeName)
@@ -5487,6 +5628,7 @@ export class VaultGateway extends TypertRemoteService {
   @Remote('vaultDelete')
   async vaultDelete(name: string, confirm: boolean): Promise<{ deleted: boolean; name?: string; active: string; vaults: Array<{ name: string; active: boolean }>; note: string }> {
     this.assertWritable('vaultDelete')
+    await this.guardedStore()
     if (confirm !== true) throw new Error('vaultDelete: pass confirm: true to delete a vault')
     if (!/^[a-zA-Z0-9._-]+$/.test(name)) {
       throw new Error('vaultDelete: name may contain only letters, digits, . _ -')
@@ -5495,7 +5637,7 @@ export class VaultGateway extends TypertRemoteService {
     const dir = dirname(this.vaultPath ?? defaultVaultPath(this.activeName))
     const source = join(dir, `${name}.json`)
     if (!(await existsFile(source))) throw new Error(`vaultDelete: vault "${name}" not found`)
-    await unlink(source)
+    await changeCloudBackupVault(source, undefined, () => unlink(source))
     // Sidecars belong to the vault that is gone: its audit trail and its
     // per-vault access policy would otherwise outlive it (and a re-created
     // vault of the same name would silently inherit the stale policy).
@@ -5567,7 +5709,7 @@ export class VaultGateway extends TypertRemoteService {
   async setFavorite(id: string, favorite: boolean): Promise<{ found: boolean }> {
     const store = await this.guardedStore()
     const updated = await store.setFavorite(id, favorite)
-    if (updated !== undefined) void this.autoBackup()
+    if (updated !== undefined) await this.autoBackup()
     return { found: updated !== undefined }
   }
 
@@ -5698,7 +5840,7 @@ export class VaultGateway extends TypertRemoteService {
     if (!patch.title.trim()) throw new Error('vault: title must not be empty')
     const store = await this.guardedStore()
     const entry = await store.add(patch)
-    void this.autoBackup()
+    await this.autoBackup()
     return toSummary(entry)
   }
 
@@ -5709,7 +5851,7 @@ export class VaultGateway extends TypertRemoteService {
     const store = await this.guardedStore()
     const updated = await store.update(id, patch)
     if (updated === undefined) return { found: false }
-    void this.autoBackup()
+    await this.autoBackup()
     return { found: true, entry: toSummary(updated) }
   }
 
@@ -5719,7 +5861,7 @@ export class VaultGateway extends TypertRemoteService {
     this.assertWritable('delete')
     const store = await this.guardedStore()
     const deleted = await store.delete(id)
-    if (deleted) void this.autoBackup()
+    if (deleted) await this.autoBackup()
     return { deleted }
   }
 
@@ -5994,10 +6136,11 @@ function toWire(entry: VaultEntry): VaultEntryWire {
 }
 
 /** Resolve the master password from config or the named environment variable. */
-function resolveMasterPassword(config: Config): string {
+function resolveMasterPassword(config: Config, required = true): string {
   if (config.masterPasswordEnv !== undefined) {
     const fromEnv = process.env[config.masterPasswordEnv]
     if (fromEnv === undefined || fromEnv.length === 0) {
+      if (!required) return ''
       throw new Error(`dsh-vault: environment variable ${config.masterPasswordEnv} is not set`)
     }
     return fromEnv
@@ -6005,6 +6148,7 @@ function resolveMasterPassword(config: Config): string {
   if (config.masterPassword !== undefined && config.masterPassword.length > 0) {
     return config.masterPassword
   }
+  if (!required) return ''
   throw new Error('dsh-vault: configure masterPassword or masterPasswordEnv to unlock the vault')
 }
 
@@ -6226,9 +6370,10 @@ async function sharedVaultStore(masterPassword: string, config: Config): Promise
   const cacheKey = `${path}\0${masterPassword}`
   const existing = sharedVaultStores.get(cacheKey)
   if (existing !== undefined) {
-    // A successful re-open of a cached store clears the failure counter.
+    // Clear only after verification succeeds, not while its promise is pending.
+    const store = await existing
     await clearFailedAttempts(config)
-    return existing
+    return store
   }
   const opening = openVault({
     masterPassword,
@@ -6241,8 +6386,9 @@ async function sharedVaultStore(masterPassword: string, config: Config): Promise
     throw error
   })
   sharedVaultStores.set(cacheKey, opening)
+  const store = await opening
   await clearFailedAttempts(config)
-  return opening
+  return store
 }
 
 /** Validate a model-supplied result limit: a positive integer capped at 100. */
@@ -6539,6 +6685,7 @@ async function restoreVaultFromBackup(masterPassword: string, config: Config, ba
   sharedVaultStores.delete(cacheKey)
   const store = await sharedVaultStore(masterPassword, config)
   await clearFailedAttempts(config)
+  notifyVaultPersist(target)
   return {
     entries: store.list().length,
     safetyBackup: current !== undefined ? safety : '',

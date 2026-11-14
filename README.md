@@ -181,6 +181,10 @@ Backups, vault switching, rekeying, recovery codes and system search.
 
 **Typical workflows**: store an SSH credential (`kind: ssh` + host/port/username/password or privateKey) and have the model `vault_search` for the host then `vault_get` the connection details; keep `api-key`/`oauth` entries for API-gateway access/refresh token rotation.
 
+## Automatic cloud backups (added in this branch)
+
+Settings → Vault → Backup supports private GitHub repositories, S3, Alibaba OSS and Cloudflare R2. Opt-in on-change/interval uploads send encrypted vault snapshots, with multiple destinations, runtime status, manual retry and bounded remote retention. Credentials are environment-variable references only. This is not multi-device sync; Git history and object versions can retain old ciphertext. See the [cloud backup guide](docs/cloud-backup.md) for setup, permissions, limitations and recovery.
+
 ## Installation
 
 dsh-vault is a **bundle** (a package declaring `dsh.bundle`): once installed into a profile, its `cordis.patch.yml` automatically inserts the `vault` plugin row (referenced by package name `dsh-vault`; the master password is injected via the `DSH_VAULT_PASSWORD` environment variable). The package ships a self-contained build script — git installs compile `lib/` automatically.
@@ -546,6 +550,12 @@ Switch profiles in **Settings → Credentials → Permissions → Model tools** 
 | **Custom…** | core + any of: Management / Import-export / Browser sessions / Backups & files |
 
 `tools: basic|standard|full|custom` can also be set in the plugin config; the UI choice wins and is stored in `<vault dir>/tools.json` (the process-wide tool catalog is not per vault).
+
+## Password Manager (1pass) Settings — v1.11.0
+
+Enable the plugin and open **Settings → 密码管理(1pass)**. The workbench adopts dsh-config-manager’s layout and interaction model: four primary destinations, measured More overflow, command search, full-width tasks, scoped dialogs and compact host-theme controls. Existing vault, TOTP, attachments, import/export, cloud backups, audit and trash remain available. See [GUI reference notes](docs/gui-reference.md) and [NOTICE](NOTICE).
+
+With no master-password environment variable, the plugin now mounts a first-use create/unlock form instead of failing startup. The masked password is held only in the current DSH process; it is not written into plugin configuration, browser storage, or model-tool arguments. Enter it again after the host restarts. Existing masterPasswordEnv deployments remain supported. Weak nonempty passwords are accepted; strength indicators are advisory only.
 
 ## Configuration
 

@@ -16,6 +16,17 @@ node tests/e2e/cli-prompt.mjs       # the password prompt must not echo (pseudo-
 node tests/e2e/strength-stars.mjs    # title strength indicator (skips until the host is restarted)
 ```
 
+## Offline cloud backup panel
+
+This fixture uses synthetic settings and in-memory responses. It does not connect to DSH, read credentials, launch a user profile, or call a cloud provider. All browser network requests are blocked or fulfilled locally. The owned browser/context is closed in a finally block.
+
+```bash
+pnpm exec tsdown --config tests/e2e/cloud-backup.config.ts
+node tests/e2e/cloud-backup-visual.mjs
+```
+
+Set DSH_TEST_CHROME to an installed Chromium executable on non-default hosts. Screenshots are written under lib/cloud-preview (gitignored); their success states are fixture data, not evidence of real cloud backups. The session-e2e Vitest browser suite is opt-in via DSH_E2E_BROWSER=1.
+
 ## Safety rules (enforced by the helper)
 
 Every script runs in a vault **reserved for automation** (`e2e`, or

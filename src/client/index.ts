@@ -6,26 +6,19 @@
  * @module dsh-vault/client
  */
 
-import type { Context as ClientContext } from '@deepseek-ai/cordis'
-import type { ConnectionHandle } from '@deepseek-ai/dsh-api-remotes/client'
-import type {} from '@deepseek-ai/dsh-client-locale/client'
-import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
-// Type-only: pulls the SlotRegistry service merge (ctx.slots).
-import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
-import { VaultSection, type VaultSectionInjected } from './VaultSection.tsx'
+import type { Context } from '@deepseek-ai/cordis'
+import type { RpcConnection, VaultHostServices } from './host-contracts.ts'
+import type { VaultSectionInjected } from './VaultSection.tsx'
+import { VaultWorkbench } from './VaultWorkbench.tsx'
 import type { VaultSectionTypes } from './VaultSection.tsx'
-import { en, zh, type VaultLocaleKey } from './locales.ts'
+import type { CloudBackupSettings, CloudBackupView } from '../cloud-backup-types.ts'
+import { en, zh } from './locales.ts'
+
+type ClientContext = Context & VaultHostServices
 
 export type { VaultSectionInjected, VaultSectionProps } from './VaultSection.tsx'
 export type { VaultSectionTypes } from './VaultSection.tsx'
 export type { VaultLocaleKey } from './locales.ts'
-
-declare module '@deepseek-ai/dsh-client-ui-slots' {
-  interface LocaleNamespaceMap {
-    /** Vault settings page copy. */
-    'settings.vault': VaultLocaleKey
-  }
-}
 
 /** Dictionary namespace owned by this plugin. */
 export const NS = 'settings.vault'
@@ -42,19 +35,23 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'dsh-vault: dictionaries')
 
   const t = ctx.locale.bind(NS)
-  const connection = ctx.get('connection') as ConnectionHandle
+  const connection = ctx.get('connection') as RpcConnection
 
   /** Invoke one host vault remote and normalize the RPC envelope. */
   async function invoke<T>(method: string, args: Record<string, unknown> = {}): Promise<T> {
-    const result = await connection.rpc.call('/api', `vault/${method}`, { args })
-    if (!result.ok) {
-      throw new Error(`vault.${method} failed: ${result.error.code}: ${result.error.message}`)
-    }
-    return result.value as T
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), method === 'setupStatus' ? 15000 : 125000)
+    try {
+      const result = await connection.rpc.call('/api', `vault/${method}`, { args }, controller.signal)
+      if (!result.ok) throw new Error(`vault.${method} failed: ${result.error.code}: ${result.error.message}`)
+      return result.value as T
+    } finally { clearTimeout(timeout) }
   }
 
   const injected = (): VaultSectionInjected => ({
     t,
+    setupStatus: () => invoke<{ configured: boolean; exists: boolean }>('setupStatus'),
+    openWithPassword: (password) => invoke<{ locked: boolean; entries: number }>('openWithPassword', { password }),
     config: () => invoke<VaultSectionTypes['config']>('config'),
     setAccessMode: (mode) => invoke<VaultSectionTypes['config']>('setAccessMode', { mode }),
     setToolProfile: (profile: 'basic' | 'standard' | 'full' | 'custom', groups?: string[]) => invoke<{ toolProfile: 'basic' | 'standard' | 'full' | 'custom'; tools: number; toolGroups: string[] }>('setToolProfile', { profile, ...(groups !== undefined ? { groups } : {}) }),
@@ -73,6 +70,9 @@ export function apply(ctx: ClientContext): void {
     stats: () => invoke<Record<string, unknown>>('stats'),
     recent: () => invoke<{ entries: unknown[] }>('recent').then(r => r.entries),
     backupStatus: () => invoke<{ daysSinceBackup: number; backups: number }>('backupStatus'),
+    cloudBackup: () => invoke<CloudBackupView>('cloudBackup'),
+    setCloudBackup: (settings: CloudBackupSettings) => invoke<CloudBackupView>('setCloudBackup', { settings }),
+    runCloudBackup: () => invoke<CloudBackupView>('runCloudBackup'),
     backup: (maxBackups) => invoke<{ path: string; kept: number; pruned: number }>('backup', { ...(maxBackups !== undefined ? { maxBackups } : {}) }),
     health: () => invoke<{ weak: unknown[]; reused: unknown[]; strength: { weak: number; fair: number; strong: number }; no2fa: unknown[]; httpSites: unknown[]; score: number; verdict: string }>('health'),
     duplicates: () => invoke<{ groups: number }>('duplicates'),
@@ -144,9 +144,10 @@ export function apply(ctx: ClientContext): void {
 
   ctx.slots.inject('settings.section', () => ctx.slots.register({
     name: 'settings.section',
-    id: 'vault',
+    id: 'onepass',
     order: 30,
     label: () => t('nav'),
+    locale: NS,
     inject: injected,
-  }, VaultSection))
+  }, VaultWorkbench))
 }

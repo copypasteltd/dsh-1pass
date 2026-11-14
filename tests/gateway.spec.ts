@@ -4,7 +4,10 @@
  * invokes over /api).
  */
 
-import { test, expect } from 'vitest'
+import { test, expect, vi } from 'vitest'
+// Ordinary tests must never enumerate this machine's actual credentials.
+vi.mock('../src/chrome.ts', async importOriginal => ({ ...await importOriginal<typeof import('../src/chrome.ts')>(), readChromeLogins: () => [] }))
+vi.mock('../src/keychain.ts', async importOriginal => ({ ...await importOriginal<typeof import('../src/keychain.ts')>(), listKeychainEntries: () => [], readKeychainPasswords: () => [] }))
 import { mkdtemp, rm, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -31,6 +34,8 @@ import { VaultGateway, resetVaultSwitch } from '../src/index'
 async function withGateway<T>(run: (gateway: VaultGateway) => Promise<T>): Promise<T> {
   const ctx = new Context()
   const dir = await mkdtemp(join(tmpdir(), 'dsh-vault-gw-'))
+  const previousHome = process.env.DSH_HOME
+  process.env.DSH_HOME = join(dir, 'dsh-home')
   try {
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
@@ -38,6 +43,8 @@ async function withGateway<T>(run: (gateway: VaultGateway) => Promise<T>): Promi
     const gateway = ctx.get('vault') as VaultGateway
     return await run(gateway)
   } finally {
+    if (previousHome === undefined) delete process.env.DSH_HOME
+    else process.env.DSH_HOME = previousHome
     resetVaultSwitch()
     ctx.registry.delete(VaultGateway)
     ctx.registry.delete(ToolRuntime)
@@ -50,8 +57,8 @@ test('VaultGateway exposes the expected remote method names', async () => {
   await withGateway(async gateway => {
     const methods = remoteMethods(gateway).map(m => m.exportName ?? m.method).sort()
     expect(methods).toEqual([
-      'add', 'attach', 'attachments', 'autoLock', 'backup', 'backupStatus', 'backups', 'breachCheck', 'config', 'delete', 'deleteBackup', 'detach', 'downloadAttachment', 'duplicateGroups', 'duplicates', 'export1pux', 'exportBitwarden', 'exportCsv', 'generatePassword', 'generateUsername', 'generatorHistory', 'get', 'health', 'history', 'import1password', 'import1pif', 'importBitwarden', 'importBitwardenEncrypted', 'importChrome', 'importEnpass', 'importFirefox', 'importKdbx', 'importKeePassXml', 'importManagerCsv', 'keychainImport', 'list', 'listVaults', 'lock', 'merge', 'passwordHistory', 'passwordRollback', 'previewImportCsv', 'purge', 'recent', 'recoveryCode', 'recoveryStatus', 'removeTag', 'renameTag', 'restore', 'restoreBackup', 'rotation',
-      'saveTemplate', 'search', 'searchSystem', 'sessionClose', 'sessionCollect', 'sessionExport', 'sessionGet', 'sessionListOpen', 'sessionListSaved', 'sessionOpen', 'sessionPrune', 'sessionSave', 'setAccessMode', 'setAutoCapture', 'setAutoLock', 'setFavorite', 'setToolProfile', 'stats', 'status', 'strength', 'switchVault', 'tags', 'templates', 'totp', 'totpUri', 'touch', 'trash', 'undeleteAll', 'unlock', 'update', 'vaultDelete', 'vaultRename', 'verifyAll', 'verifyRecovery', 'watchtower',
+      'add', 'attach', 'attachments', 'autoLock', 'backup', 'backupStatus', 'backups', 'breachCheck', 'cloudBackup', 'config', 'delete', 'deleteBackup', 'detach', 'downloadAttachment', 'duplicateGroups', 'duplicates', 'export1pux', 'exportBitwarden', 'exportCsv', 'generatePassword', 'generateUsername', 'generatorHistory', 'get', 'health', 'history', 'import1password', 'import1pif', 'importBitwarden', 'importBitwardenEncrypted', 'importChrome', 'importEnpass', 'importFirefox', 'importKdbx', 'importKeePassXml', 'importManagerCsv', 'keychainImport', 'list', 'listVaults', 'lock', 'merge', 'openWithPassword', 'passwordHistory', 'passwordRollback', 'previewImportCsv', 'purge', 'recent', 'recoveryCode', 'recoveryStatus', 'removeTag', 'renameTag', 'restore', 'restoreBackup', 'rotation', 'runCloudBackup',
+      'saveTemplate', 'search', 'searchSystem', 'sessionClose', 'sessionCollect', 'sessionExport', 'sessionGet', 'sessionListOpen', 'sessionListSaved', 'sessionOpen', 'sessionPrune', 'sessionSave', 'setAccessMode', 'setAutoCapture', 'setAutoLock', 'setCloudBackup', 'setFavorite', 'setToolProfile', 'setupStatus', 'stats', 'status', 'strength', 'switchVault', 'tags', 'templates', 'totp', 'totpUri', 'touch', 'trash', 'undeleteAll', 'unlock', 'update', 'vaultDelete', 'vaultRename', 'verifyAll', 'verifyRecovery', 'watchtower',
     ])
   })
 })
@@ -450,7 +457,7 @@ test('VaultGateway backup/backups follow the ACTIVE vault after switchVault', as
       const gw = ctx.get('vault') as VaultGateway
       await gw.add({ title: 'A', username: 'a', password: 'x' })
       const bk = await gw.backup()
-      expect(bk.path).toMatch(/\/vault\/[a-z]+-backups-\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}(?:-[0-9a-f]{6})?\.json$/)
+      expect(bk.path.replaceAll('\\', '/')).toMatch(/\/vault\/[a-z]+-backups-\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}(?:-[0-9a-f]{6})?\.json$/)
       // add() auto-backup'd first; the manual backup is the newest entry.
       expect((await gw.backups(5)).length).toBeGreaterThanOrEqual(1)
       // Switch to a second named vault: the same backup directory is used,
@@ -458,7 +465,7 @@ test('VaultGateway backup/backups follow the ACTIVE vault after switchVault', as
       await gw.switchVault('beta')
       await gw.add({ title: 'B', username: 'b', password: 'y' })
       const bk2 = await gw.backup()
-      expect(bk2.path).toMatch(/\/vault\/[a-z]+-backups-\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}(?:-[0-9a-f]{6})?\.json$/)
+      expect(bk2.path.replaceAll('\\', '/')).toMatch(/\/vault\/[a-z]+-backups-\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}(?:-[0-9a-f]{6})?\.json$/)
       expect(bk2.path).not.toBe(bk.path)
       const betaList = await gw.backups(5)
       expect(betaList.some(b => b.path === bk2.path)).toBe(true)

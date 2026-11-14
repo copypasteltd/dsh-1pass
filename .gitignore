@@ -31,3 +31,8 @@ Thumbs.db
 # Local, machine-only denylist for the secret scanner: real vault titles/ids
 # that must never appear in a commit. Never commit this file.
 .private-denylist.json
+
+# Local reference checkouts and packaged release artifacts
+.references/
+*.tgz
+release-artifacts/

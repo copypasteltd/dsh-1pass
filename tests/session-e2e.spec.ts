@@ -11,7 +11,8 @@ import { createServer } from 'node:http'
 import type { Server } from 'node:http'
 import { openSession, collectSessionCookies, closeSession, closeAllSessions, resolveChromium, playwrightAvailable } from '../src/session.ts'
 
-const available = playwrightAvailable() && resolveChromium() !== undefined
+// A default unit run must not launch browsers or contact websites.
+const available = process.env.DSH_E2E_BROWSER === '1' && playwrightAvailable() && resolveChromium() !== undefined
 
 test.skipIf(!available)('session: end-to-end headed flow collects HttpOnly cookies', async () => {
   const server: Server = createServer((_req, res) => {

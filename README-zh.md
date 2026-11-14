@@ -181,6 +181,10 @@ dsh-vault 是一个面向 DeepSeek Harness 的安全加密插件：把你在使�
 
 **典型用法**:把 SSH 凭据存成 `kind: ssh`(host/port/username/password 或 privateKey),让模型先 `vault_search` 找到主机、再 `vault_get` 取连接信息;`api-key`/`oauth` 条目用于 API 网关的 access/refresh token 轮换。
 
+## 自动云备份（当前分支新增）
+
+设置 → 凭据库 → 备份现可配置 GitHub 私有仓库、S3、阿里云 OSS、Cloudflare R2。支持写入后与间隔自动上传加密快照、多目标、状态与手动重试、远端保留策略。默认关闭，访问凭证仅通过环境变量名引用；不是多设备同步服务。Git 历史与对象存储历史版本可能保留旧数据。设置、权限、限制与恢复步骤见 [云备份指南](docs/cloud-backup.md)。
+
 ## 安装
 
 dsh-vault 是一个 **bundle**(声明 `dsh.bundle` 的包):安装到 profile 后,它的 `cordis.patch.yml` 会自动插入 `vault` 插件行(按包名 `dsh-vault` 引用,主密码经 `DSH_VAULT_PASSWORD` 环境变量注入)。包内含自包含构建脚本,git 安装时会自动编译 `lib/`。
@@ -479,6 +483,16 @@ k-anonymity **没有**隐藏的东西,直说:
 | **自定义…** | 基础 + 任选: 管理 / 导入导出 / 浏览器会话 / 备份与文件 |
 
 也可在插件配置里写 `tools: basic|standard|full|custom`;界面选择优先,并保存在 `<vault 目录>/tools.json`(工具集是进程级设置,不随保险库变化)。
+
+## 密码管理(1pass) 设置页（v1.11.0）
+
+安装并启用插件后，打开 **设置 → 密码管理(1pass)**。界面采用 dsh-config-manager 的工作台结构与交互模式：四项主导航、窄屏更多菜单、命令搜索、全宽流程面板、宿主主题与紧凑控件。原密码簿、导入导出、TOTP、附件、云备份、审计和回收站保留。参考检查与许可说明见 [GUI 参考记录](docs/gui-reference.md) 与 [NOTICE](NOTICE)。
+
+没有环境变量时，插件不再启动失败。直接在设置页的掩码表单创建／解锁保险库，主密码只留在当前 DSH 进程内，不写入插件配置、浏览器存储或模型工具参数。重启 DSH 后需重新输入。原有 masterPasswordEnv 部署仍兼容。
+
+## 主密码与弱密码
+
+主密码和条目密码不按长度、字符组合或强度分数拦截，允许单字符、纯数字等弱密码。本机首次设置窗口仅检查主密码非空且两次输入一致；密码强度评分和安全页提醒只供参考，不阻止保存。加密算法保持不变，但弱主密码更容易被离线猜解。
 
 ## 配置
 

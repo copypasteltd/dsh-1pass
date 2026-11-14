@@ -1,8 +1,12 @@
 /** Copy dictionaries for the Vault settings section. */
+import { cloudBackupEn, cloudBackupZh } from './cloud-backup-locales.ts'
+import { workbenchEn, workbenchZh } from './workbench-locales.ts'
 
 /** English strings (the key-set source of truth for this pair). */
 export const en = {
-  nav: 'Vault',
+  ...cloudBackupEn,
+  ...workbenchEn,
+  nav: 'Password Manager (1pass)',
   heading: 'Vault',
   intro: 'Encrypted credentials stored on this machine.',
   searchPlaceholder: 'Search title, username, email, host…',
@@ -540,7 +544,9 @@ export type VaultLocaleKey = keyof typeof en
 
 /** Chinese strings (same keys as English). */
 export const zh: Record<VaultLocaleKey, string> = {
-  nav: '凭据库',
+  ...cloudBackupZh,
+  ...workbenchZh,
+  nav: '密码管理(1pass)',
   heading: 'Vault 凭据库',
   intro: '本机加密存储的凭据。',
   searchPlaceholder: '搜索标题、用户名、邮箱、主机…',

@@ -1,6 +1,6 @@
 {
   "name": "dsh-vault",
-  "version": "1.10.75",
+  "version": "1.11.0",
   "bin": {
     "dsh-vault": "lib/cli.js"
   },
@@ -10,12 +10,12 @@
   "author": "Ox0400",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Ox0400/dsh-vault.git"
+    "url": "git+https://github.com/copypasteltd/dsh-1pass.git"
   },
   "bugs": {
-    "url": "https://github.com/Ox0400/dsh-vault/issues"
+    "url": "https://github.com/copypasteltd/dsh-1pass/issues"
   },
-  "homepage": "https://github.com/Ox0400/dsh-vault#readme",
+  "homepage": "https://github.com/copypasteltd/dsh-1pass#readme",
   "main": "lib/index.js",
   "exports": {
     ".": "./lib/index.js",
@@ -29,6 +29,7 @@
     },
     "client": {
       "inject": [
+        "@deepseek-ai/dsh-client-runtime",
         "@deepseek-ai/dsh-client-connection",
         "@deepseek-ai/dsh-client-locale",
         "@deepseek-ai/dsh-client-ui-settings"
@@ -38,6 +39,11 @@
   },
   "files": [
     "lib",
+    "!lib/cloud-preview/**",
+    "!lib/**/*.map",
+    "docs/cloud-backup.md",
+    "docs/gui-reference.md",
+    "NOTICE",
     "cordis.patch.yml",
     "README.md",
     "README-zh.md",
@@ -66,17 +72,22 @@
     "@deepseek-ai/dsh-tools": "0.1.0-rc.6",
     "@deepseek-ai/dsh-typert-protocol": "0.1.0-rc.6",
     "@deepseek-ai/schemastery": "3.18.1",
+    "@testing-library/react": "^16.3.3",
     "@types/node": "^22.0.0",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
+    "jsdom": "^26.1.0",
     "lightningcss": "^1.32.0",
     "playwright-core": "^1.61.1",
     "react": "^18.3.1",
+    "react-dom": "18.3.1",
     "tsdown": "^0.22.0",
     "typescript": "^6.0.0",
     "vitest": "^4.1.0"
   },
   "scripts": {
     "build": "npm run build:host && npm run build:client",
-    "build:host": "tsc -p tsconfig.host.json && node -e \"require('node:fs').chmodSync('lib/cli.js', 0o755)\" && node lib/cli.js --version > /dev/null && echo \"host build ok (cli starts)\"",
+    "build:host": "tsc -p tsconfig.host.json && node scripts/check-host-build.mjs",
     "build:client": "tsdown",
     "vault": "node lib/cli.js",
     "prepare": "npm run build",

@@ -11,7 +11,8 @@ import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
-import { ToolCallId } from '@deepseek-ai/dsh-llm'
+import type { ToolCallId as ToolCallIdType } from '@deepseek-ai/dsh-llm'
+const ToolCallId = (value: string): ToolCallIdType => value as ToolCallIdType
 import * as VaultPlugin from '../src/index.ts'
 
 const signal = new AbortController().signal

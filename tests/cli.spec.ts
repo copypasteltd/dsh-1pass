@@ -6,7 +6,7 @@
 import { test, expect } from 'vitest'
 import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { openVault } from '../src/store.ts'
 import { runCli, resolveCliVaultPath, type CliIo } from '../src/cli.ts'
 import { totp } from '../src/totp.ts'
@@ -189,7 +189,8 @@ test('export-env writes a 0600 file', async () => {
     const target = join(dir, 'nested', 'out.env')
     const r = await invoke(['export-env', target, '--path', vaultPath])
     expect(r.code).toBe(0)
-    expect((await stat(target)).mode & 0o777).toBe(0o600)
+    // Node's POSIX mode bits do not represent a Windows DACL.
+    if (process.platform !== 'win32') expect((await stat(target)).mode & 0o777).toBe(0o600)
     expect(await readFile(target, 'utf8')).toContain("DASHSCOPE_API_KEY='sk-dash-secret'")
     expect(r.out).toBe('') // progress goes to stderr so stdout stays pipeable
   })
@@ -282,10 +283,10 @@ test('resolveCliVaultPath prefers --path and honours $DSH_HOME for named vaults'
     }
     return { command, positional, flags }
   }
-  expect(resolveCliVaultPath(parse(['list', '--path', '/tmp/x.json']), {})).toBe('/tmp/x.json')
+  expect(resolveCliVaultPath(parse(['list', '--path', '/tmp/x.json']), {})).toBe(resolve('/tmp/x.json'))
   const named = resolveCliVaultPath(parse(['list', '--vault', 'work']), { DSH_HOME: '/tmp/home' })
   expect(named.endsWith(join('vault', 'work.json'))).toBe(true)
-  expect(named.startsWith('/tmp/home')).toBe(true)
+  expect(named.startsWith(resolve('/tmp/home'))).toBe(true)
   const fallback = resolveCliVaultPath(parse(['list']), { DSH_HOME: '/tmp/home' })
   expect(fallback.endsWith(join('vault', 'default.json'))).toBe(true)
 })
@@ -424,7 +425,7 @@ test('env --file writes 0600, creates the directory and keeps stdout clean', asy
     // stdout stays a clean stream so the same command can be piped elsewhere.
     expect(r.out).toBe('')
     expect(r.err).toMatch(/mode 0600/)
-    expect((await stat(file)).mode & 0o777).toBe(0o600)
+    if (process.platform !== 'win32') expect((await stat(file)).mode & 0o777).toBe(0o600)
     const body = await readFile(file, 'utf8')
     expect(body).toContain("DASHSCOPE_API_KEY='sk-dash-secret'")
   })

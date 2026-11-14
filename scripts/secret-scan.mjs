@@ -83,7 +83,7 @@ function hasRealKeyBody(text, at, markerLength) {
   return /[A-Za-z0-9+/]{40,}/.test(body)
 }
 
-const SKIP_DIRS = new Set(['node_modules', '.git', 'coverage', 'dist', '.vite', '.vite-temp', 'tmp'])
+const SKIP_DIRS = new Set(['node_modules', '.git', 'coverage', 'dist', '.vite', '.vite-temp', 'tmp', '.references', 'release-artifacts'])
 const TEXT_EXT = new Set(['.ts', '.tsx', '.js', '.mjs', '.cjs', '.json', '.md', '.yml', '.yaml', '.css', '.html', '.sh', '.txt'])
 const MAX_BYTES = 4_000_000
 
