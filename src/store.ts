@@ -18,7 +18,7 @@
 
 import { chmod, mkdir, readFile, rm } from 'node:fs/promises'
 import { basename, dirname, join, resolve } from 'node:path'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { dshHomePath } from './home-paths.ts'
 import {
   decrypt,
@@ -33,6 +33,11 @@ import {
 
 /** Successful encrypted document writes, observed by opt-in backup automation. */
 const persistObservers = new Set<(path: string) => void>()
+const lockObservers = new Set<(path: string) => void>()
+export function onVaultLock(observer: (path: string) => void): () => void {
+  lockObservers.add(observer)
+  return () => { lockObservers.delete(observer) }
+}
 export function onVaultPersist(observer: (path: string) => void): () => void {
   persistObservers.add(observer)
   return () => { persistObservers.delete(observer) }
@@ -139,6 +144,14 @@ export interface VaultEntry {
   port?: string
   /** SSH private key (PEM). */
   privateKey?: string
+  /** SSH authentication variant. Legacy entries infer it from privateKey. */
+  sshAuth?: 'password' | 'certificate'
+  /** Optional literal IP address separate from the host alias. */
+  ip?: string
+  /** Optional OpenSSH user certificate; privateKey remains the signing key. */
+  certificate?: string
+  /** Passphrase protecting privateKey (never exposed in summaries). */
+  keyPassphrase?: string
   /** API key. */
   apiKey?: string
   /** Generic secret (client secret, shared secret, …). */
@@ -201,7 +214,7 @@ export interface VaultEntry {
 /** An entry as returned by search/list — never carries secrets. */
 export type VaultEntrySummary = Pick<
   VaultEntry,
-  'id' | 'title' | 'kind' | 'sensitivity' | 'favorite' | 'username' | 'email' | 'phone' | 'host' | 'port' | 'url' | 'tags' | 'icon' | 'color'
+  'id' | 'title' | 'kind' | 'sensitivity' | 'favorite' | 'username' | 'email' | 'phone' | 'host' | 'ip' | 'sshAuth' | 'port' | 'url' | 'tags' | 'icon' | 'color'
 > & { updatedAt?: number; createdAt?: number; cookieCount?: number; attachmentCount?: number; cardExpiry?: string; cardHolder?: string; hasOtp?: boolean; fields?: Record<string, FieldValue> }
 
 /** The fields `vault_update` may change, mirroring the entry minus identity/timestamps. */
@@ -263,10 +276,18 @@ export class VaultStore {
   private kdf: KdfParams | undefined
   /** Cached derived key; derived once after load and reused for every persist. */
   private key: Buffer | undefined
+  /** Exact encrypted bytes last loaded or successfully committed by this handle. */
+  private knownDiskHash: string | undefined
   /** Serializes in-process persist calls so concurrent mutations never
    * contend for the cross-process file lock and every write sees the latest
    * in-memory state. */
   private persistChain: Promise<unknown> = Promise.resolve()
+  /** Sync replacement must not race ordinary methods that mutate before persist(). */
+  private syncCommitInProgress = false
+  private keyChangesInProgress = 0
+  private loadInProgress = false
+  /** A lock request revokes sync immediately, before its asynchronous audit flush. */
+  private syncGeneration = 0
   /** Auto-lock: after this many ms of inactivity the vault re-locks (key
    * wiped). `0`/undefined disables auto-lock. */
   private lockTimeoutMs: number | undefined
@@ -322,24 +343,33 @@ export class VaultStore {
 
   /** Lock the vault: wipe the derived key and require re-unlock. */
   async lock(): Promise<void> {
-    // Persist the trail before the key is wiped so no recent read/search/TOTP
-    // event is lost on lock or process exit.
-    if (!this.locked) await this.flushAuditLog().catch(() => {})
-    this.key?.fill(0)
-    this.key = undefined
-    this.locked = true
-    this.lastActivity = Date.now()
+    this.syncGeneration++
+    this.keyChangesInProgress++
+    try {
+      for (const observer of lockObservers) { try { observer(resolve(this.path)) } catch { /* revoke independent capabilities */ } }
+      // Persist the trail before the key is wiped so no recent read/search/TOTP
+      // event is lost on lock or process exit.
+      if (!this.locked) await this.flushAuditLog().catch(() => {})
+      this.key?.fill(0)
+      this.key = undefined
+      this.locked = true
+      this.lastActivity = Date.now()
+    } finally { this.keyChangesInProgress-- }
   }
 
   /** Re-derive the key from the master password (after a lock). */
   async unlock(): Promise<void> {
-    if (this.kdf === undefined) {
-      await this.load()
-      return
-    }
-    this.key = await deriveKey(this.masterPassword, this.kdf)
-    this.locked = false
-    this.lastActivity = Date.now()
+    this.assertNoSyncCommit()
+    this.keyChangesInProgress++
+    try {
+      if (this.kdf === undefined) {
+        await this.load()
+        return
+      }
+      this.key = await deriveKey(this.masterPassword, this.kdf)
+      this.locked = false
+      this.lastActivity = Date.now()
+    } finally { this.keyChangesInProgress-- }
   }
 
   /**
@@ -347,66 +377,229 @@ export class VaultStore {
    * and derive the vault key from the document's fixed KDF parameters.
    */
   async load(): Promise<void> {
-    // Ensure the vault directory exists before any lock-file or document
-    // write, so first use never fails with ENOENT on a fresh install.
-    await mkdir(dirname(this.path), { recursive: true, mode: 0o700 })
-    // Best-effort cleanup of a stale writer lock from a crashed process. The
-    // lock is an exclusive-create sibling; an orphaned one only costs the next
-    // writer its retry timeout, so removing it at open time is safe (no live
-    // writer can exist while we are still booting this store).
-    await rm(`${this.path}.lock`, { force: true }).catch(() => {})
-    // Tighten a pre-existing directory (mkdir leaves existing dirs untouched)
-    // so the vault tree stays owner-only even when a parent created it wider.
-    await chmod(dirname(this.path), 0o700).catch(() => {})
-    const { file, created } = await this.readDocument()
-    this.kdf = file.kdf
-    this.key = await deriveKey(this.masterPassword, file.kdf)
-    if (created) {
-      // First run: persist the empty document so the file exists with the
-      // chosen KDF (and its verify envelope) before any entry is added.
-      await this.persist()
-      this.locked = false
-      this.lastActivity = Date.now()
-      return
-    }
-    // Verify the password FIRST, before touching any entry: a wrong password
-    // would otherwise surface as a raw AEAD failure ("unable to authenticate
-    // data") from whichever entry happens to be decrypted first, for every
-    // caller (the CLI, the plugin, the tools).
+    this.assertNoSyncCommit()
+    this.loadInProgress = true
+    this.keyChangesInProgress++
+    this.knownDiskHash = undefined
     try {
-      const verify = decrypt(file.verify!, this.key)
-      if (!safeEqual(verify, Buffer.from(VERIFY_PLAINTEXT, 'utf8'))) {
+      // Complete already-admitted local writes before loading an exact disk
+      // revision. New ordinary mutations are excluded until publication.
+      await this.persistChain
+      // Ensure the vault directory exists before any lock-file or document
+      // write, so first use never fails with ENOENT on a fresh install.
+      await mkdir(dirname(this.path), { recursive: true, mode: 0o700 })
+      // Best-effort cleanup of a stale writer lock from a crashed process. The
+      // lock is an exclusive-create sibling; an orphaned one only costs the next
+      // writer its retry timeout, so removing it at open time is safe (no live
+      // writer can exist while we are still booting this store).
+      await rm(`${this.path}.lock`, { force: true }).catch(() => {})
+      // Tighten a pre-existing directory (mkdir leaves existing dirs untouched)
+      // so the vault tree stays owner-only even when a parent created it wider.
+      await chmod(dirname(this.path), 0o700).catch(() => {})
+      const { file, created, diskHash } = await this.readDocument()
+      this.kdf = file.kdf
+      this.key = await deriveKey(this.masterPassword, file.kdf)
+      if (created) {
+        // First run: persist the empty document so the file exists with the
+        // chosen KDF (and its verify envelope) before any entry is added.
+        await this.enqueuePersist()
+        this.locked = false
+        this.lastActivity = Date.now()
+        return
+      }
+      // Verify the password FIRST, before touching any entry: a wrong password
+      // would otherwise surface as a raw AEAD failure ("unable to authenticate
+      // data") from whichever entry happens to be decrypted first, for every
+      // caller (the CLI, the plugin, the tools).
+      try {
+        const verify = decrypt(file.verify!, this.key)
+        if (!safeEqual(verify, Buffer.from(VERIFY_PLAINTEXT, 'utf8'))) {
+          throw new Error('vault master password is incorrect')
+        }
+      } catch (err) {
+        if (err instanceof Error && err.message.includes('incorrect')) throw err
         throw new Error('vault master password is incorrect')
       }
-    } catch (err) {
-      if (err instanceof Error && err.message.includes('incorrect')) throw err
-      throw new Error('vault master password is incorrect')
-    }
-    for (const blob of file.entries) {
-      const plaintext = decrypt(blob, this.key)
-      const entry = JSON.parse(plaintext.toString('utf8')) as VaultEntry
-      // Heal timestamps written by an older, laxer build: a catalog template
-      // hint ("expiry epoch millis") stored as `expiresAt` makes every read
-      // path deal with an invalid date.
-      normalizeTimestamps(entry as unknown as Record<string, unknown>)
-      this.entries.set(entry.id, entry)
-    }
-    // Restore the persisted audit trail (encrypted sidecar, same key). A
-    // missing or unreadable log simply starts fresh.
-    const persistedAudit = await this.readAuditLog()
-    if (persistedAudit.length > 0) {
-      this.history.push(...persistedAudit)
-      if (this.history.length > VaultStore.AUDIT_CAP) {
-        this.history.splice(0, this.history.length - VaultStore.AUDIT_CAP)
+      const loaded = new Map<string, VaultEntry>()
+      for (const blob of file.entries) {
+        const plaintext = decrypt(blob, this.key)
+        const entry = JSON.parse(plaintext.toString('utf8')) as VaultEntry
+        // Heal timestamps written by an older, laxer build: a catalog template
+        // hint ("expiry epoch millis") stored as `expiresAt` makes every read
+        // path deal with an invalid date.
+        normalizeTimestamps(entry as unknown as Record<string, unknown>)
+        loaded.set(entry.id, entry)
       }
-    }
-    this.locked = false
-    this.lastActivity = Date.now()
+      // Restore the persisted audit trail (encrypted sidecar, same key). A
+      // missing or unreadable log simply starts fresh.
+      const persistedAudit = await this.readAuditLog()
+      if (persistedAudit.length > 0) {
+        this.history.push(...persistedAudit)
+        if (this.history.length > VaultStore.AUDIT_CAP) {
+          this.history.splice(0, this.history.length - VaultStore.AUDIT_CAP)
+        }
+      }
+      this.entries.clear()
+      for (const [id, entry] of loaded) this.entries.set(id, entry)
+      this.knownDiskHash = diskHash
+      this.locked = false
+      this.lastActivity = Date.now()
+    } catch (error) {
+      this.knownDiskHash = undefined
+      throw error
+    } finally { this.loadInProgress = false; this.keyChangesInProgress-- }
   }
 
   /** The vault file path (useful for messages and debugging). */
   get filePath(): string {
     return this.path
+  }
+
+  /** Detached complete sync input, including trash. No disk access, touch or audit. */
+  syncSnapshot(): VaultEntry[] {
+    this.assertSyncUnlocked()
+    try { return JSON.parse(stableSyncJson([...this.entries.values()])) as VaultEntry[] }
+    catch { throw new Error('SYNC_INVALID_STATE') }
+  }
+
+  /** SHA-256 of every record, ordered by id and recursively sorted object keys. */
+  syncFingerprint(): string {
+    const snapshot = this.syncSnapshot()
+    try { return syncEntriesFingerprint(snapshot) }
+    catch { throw new Error('SYNC_INVALID_STATE') }
+  }
+
+  /** Cached exact encrypted-document revision, not a fresh disk observation.
+   * Callers must compare actual disk bytes with this value before previewing. */
+  syncDiskHash(): string {
+    this.assertSyncUnlocked()
+    if (this.knownDiskHash === undefined) throw new Error('SYNC_LOCAL_CHANGED')
+    return this.knownDiskHash
+  }
+
+  /** Encrypt local ancestor/rollback metadata without disclosing the vault key. */
+  sealLocalSyncState(value: unknown): string {
+    this.assertSyncUnlocked()
+    let plaintext: Buffer | undefined
+    try {
+      if (value === undefined) throw new Error()
+      plaintext = Buffer.from(stableSyncJson({ magic: LOCAL_SYNC_MAGIC, value }), 'utf8')
+      return JSON.stringify({ magic: LOCAL_SYNC_MAGIC, ...encrypt(plaintext, this.key!) })
+    } catch { throw new Error('SYNC_INVALID_STATE') }
+    finally { plaintext?.fill(0) }
+  }
+
+  /** Unseal only our authenticated local-state format, under the current key. */
+  unsealLocalSyncState(raw: string): unknown {
+    this.assertSyncUnlocked()
+    let plaintext: Buffer | undefined
+    try {
+      const envelope = JSON.parse(raw) as EncryptedBlob & { magic?: unknown }
+      if (envelope?.magic !== LOCAL_SYNC_MAGIC) throw new Error()
+      plaintext = decrypt(envelope, this.key!)
+      const payload = JSON.parse(plaintext.toString('utf8')) as { magic?: unknown; value?: unknown }
+      if (payload?.magic !== LOCAL_SYNC_MAGIC || !Object.hasOwn(payload, 'value')) throw new Error()
+      return payload.value
+    } catch { throw new Error('SYNC_INVALID_STATE') }
+    finally { plaintext?.fill(0) }
+  }
+
+  /**
+   * Replace exactly the confirmed records, retaining their identities/timestamps
+   * and trash markers. Validation precedes queue admission. Actual disk bytes
+   * must always match this handle's known loaded/committed revision. The optional
+   * caller preview hash must match that same revision; it cannot bless a newer
+   * file that this handle has never loaded.
+   */
+  async replaceForSync(entries: VaultEntry[], expectedFingerprint: string, authorize: () => void, expectedDiskHash?: string): Promise<void> {
+    const input = validateSyncEntries(entries)
+    if (typeof authorize !== 'function' || !isSyncHash(expectedFingerprint)
+      || (expectedDiskHash !== undefined && !isSyncHash(expectedDiskHash))) throw new Error('SYNC_INVALID_INPUT')
+    this.assertSyncUnlocked()
+    const diskHash = this.syncDiskHash()
+    if (expectedDiskHash !== undefined && expectedDiskHash !== diskHash) throw new Error('SYNC_LOCAL_CHANGED')
+    const key = this.key!
+    const kdf = this.kdf!
+    const generation = this.syncGeneration
+    const run = async (): Promise<void> => {
+      this.assertNoSyncCommit()
+      this.assertSyncUnlocked()
+      let committed = false
+      const check = (): void => {
+        try { authorize() } catch { throw new Error('SYNC_NOT_AUTHORIZED') }
+        this.assertSyncUnlocked()
+        if (this.key !== key || this.kdf !== kdf || this.syncGeneration !== generation) throw new Error('SYNC_LOCKED')
+        if (this.knownDiskHash !== diskHash || this.syncFingerprint() !== expectedFingerprint) throw new Error('SYNC_LOCAL_CHANGED')
+      }
+      try {
+        check()
+        const { withFileLock, writeFileAtomic } = await atomicWrite()
+        check()
+        await withFileLock(this.path, async () => {
+          check()
+          const previous = await readFile(this.path)
+          check()
+          const previousText = previous.toString('utf8')
+          if (!Buffer.from(previousText, 'utf8').equals(previous)) throw new Error('SYNC_INVALID_STATE')
+          if (createHash('sha256').update(previous).digest('hex') !== diskHash) {
+            throw new Error('SYNC_LOCAL_CHANGED')
+          }
+          this.syncCommitInProgress = true
+          check()
+          const file: VaultFile = {
+            version: VAULT_FORMAT_VERSION, kdf,
+            verify: encrypt(Buffer.from(VERIFY_PLAINTEXT, 'utf8'), key),
+            entries: input.map(entry => ({ id: entry.id, ...encrypt(Buffer.from(JSON.stringify(entry), 'utf8'), key) })),
+          }
+          check()
+          const serialized = JSON.stringify(file)
+          await writeFileAtomic(this.path, serialized, { mode: 0o600, dirMode: 0o700 })
+          try { check() }
+          catch (error) {
+            // Revocation may arrive during the atomic writer's await. Keep the
+            // original encrypted document and memory instead of publishing a
+            // result that no longer has authorization. The file lock is held.
+            try { await writeFileAtomic(this.path, previousText, { mode: 0o600, dirMode: 0o700 }) }
+            catch { this.knownDiskHash = undefined; throw new Error('SYNC_ROLLBACK_FAILED') }
+            throw error
+          }
+          // No await between the final guard and publication. Ordinary CRUD is
+          // excluded until this map contains the successfully written records.
+          this.entries.clear()
+          for (const entry of input) this.entries.set(entry.id, entry)
+          this.knownDiskHash = createHash('sha256').update(serialized).digest('hex')
+          this.recordHistory('sync')
+          committed = true
+        })
+        this.syncCommitInProgress = false
+        notifyVaultPersist(this.path)
+        await this.flushAuditLog().catch(() => { /* encrypted audit cannot undo a committed sync */ })
+      } catch (error) {
+        if (committed) {
+          // withFileLock also awaits lock-file cleanup after the callback. If
+          // that fails, disk and memory already committed: never report this as
+          // a safe-to-retry precommit write failure.
+          this.syncCommitInProgress = false
+          notifyVaultPersist(this.path)
+          await this.flushAuditLog().catch(() => {})
+          throw new Error('SYNC_COMMIT_UNCERTAIN')
+        }
+        const message = error instanceof Error ? error.message : ''
+        if (SYNC_ERRORS.has(message)) throw new Error(message)
+        throw new Error('SYNC_WRITE_FAILED')
+      } finally { this.syncCommitInProgress = false }
+    }
+    const pending = this.persistChain.then(run, run)
+    this.persistChain = pending.catch(() => {})
+    return pending
+  }
+
+  private assertNoSyncCommit(): void {
+    if (this.syncCommitInProgress || this.loadInProgress) throw new Error('SYNC_BUSY')
+  }
+
+  private assertSyncUnlocked(): void {
+    if (this.locked || this.expired || !this.key || !this.kdf || this.keyChangesInProgress > 0) throw new Error('SYNC_LOCKED')
   }
 
   /** All active (non-trashed) entries, in insertion order. */
@@ -469,6 +662,7 @@ export class VaultStore {
    * strings and empty arrays from the client form are dropped (a blank form
    * field means "not provided", not "store an empty value"). */
   async add(patch: VaultEntryPatch & { title: string }): Promise<VaultEntry> {
+    this.assertNoSyncCommit()
     const now = Date.now()
     validatePatchTypes(patch as unknown as Record<string, unknown>)
     const entry: VaultEntry = {
@@ -490,8 +684,70 @@ export class VaultStore {
     return entry
   }
 
+  /** Validate all rows before a single encrypted document commit. No partial batch on write failure. */
+  async addMany(patches: Array<VaultEntryPatch & { title: string }>, uniqueBy?: (entry: VaultEntryPatch & { title: string }) => string, authorize?: () => void): Promise<VaultEntry[]> {
+    this.assertNoSyncCommit()
+    if (!Array.isArray(patches) || patches.length > 500) throw new Error('vault: batch must contain at most 500 entries')
+    const input = structuredClone(patches)
+    for (const patch of input) {
+      validatePatchTypes(patch as unknown as Record<string, unknown>)
+      if (typeof patch.title !== 'string' || patch.title.trim().length === 0) throw new Error('vault: batch title must not be empty')
+    }
+    if (input.length === 0) return []
+    const run = async (): Promise<VaultEntry[]> => {
+      authorize?.()
+      if (this.locked || this.expired) throw new Error('vault: batch import requires an unlocked vault')
+      // Duplicate decisions belong inside the serialized transaction, not in a stale preview.
+      const existing = uniqueBy ? new Set(this.list().map(uniqueBy)) : undefined
+      const selected = input.filter(patch => {
+        if (!existing || !uniqueBy) return true
+        const key = uniqueBy(patch)
+        if (existing.has(key)) return false
+        existing.add(key); return true
+      })
+      if (selected.length === 0) return []
+      const now = Date.now()
+      const added = selected.map(patch => {
+        const entry: VaultEntry = { ...pickDefined(patch, { skipEmpty: true }), id: randomUUID(), title: patch.title.trim(), createdAt: now, updatedAt: now }
+        normalizeTimestamps(entry as unknown as Record<string, unknown>)
+        return entry
+      })
+      const kdf = this.kdf ?? newKdfParams()
+      const key = this.key
+      if (!key) throw new Error('vault: batch import requires an unlocked vault')
+      await mkdir(dirname(this.path), { recursive: true, mode: 0o700 })
+      const { withFileLock, writeFileAtomic } = await atomicWrite()
+      let committedHash: string | undefined
+      await withFileLock(this.path, async () => {
+        authorize?.()
+        if (this.locked || this.expired || this.key !== key) throw new Error('vault: batch import requires an unlocked vault')
+        const file: VaultFile = {
+          version: VAULT_FORMAT_VERSION, kdf,
+          verify: encrypt(Buffer.from(VERIFY_PLAINTEXT, 'utf8'), key),
+          entries: [...this.entries.values(), ...added].map(entry => ({ id: entry.id, ...encrypt(Buffer.from(JSON.stringify(entry), 'utf8'), key) })),
+        }
+        const serialized = JSON.stringify(file)
+        await writeFileAtomic(this.path, serialized, { mode: 0o600, dirMode: 0o700 })
+        committedHash = createHash('sha256').update(serialized).digest('hex')
+      })
+      // Only make imported entries visible after the atomic document replacement succeeded.
+      for (const entry of added) {
+        this.entries.set(entry.id, entry)
+        this.recordHistory('add', entry.id, entry.title)
+      }
+      this.knownDiskHash = committedHash
+      notifyVaultPersist(this.path)
+      await this.flushAuditLog().catch(() => {})
+      return added
+    }
+    const pending = this.persistChain.then(run, run)
+    this.persistChain = pending.catch(() => {})
+    return pending
+  }
+
   /** Pin or unpin an entry (favorite); returns the updated entry or undefined. */
   async setFavorite(id: string, favorite: boolean): Promise<VaultEntry | undefined> {
+    this.assertNoSyncCommit()
     const entry = this.entries.get(id)
     if (!entry || entry.deletedAt !== undefined) return undefined
     if (favorite) entry.favorite = true
@@ -601,6 +857,7 @@ export class VaultStore {
 
   /** Insert an entry directly (used by bulk import); caller owns timestamps. */
   insertDirect(entry: VaultEntry): void {
+    this.assertNoSyncCommit()
     this.entries.set(entry.id, entry)
   }
 
@@ -608,6 +865,7 @@ export class VaultStore {
    * Every defined field in `patch` replaces the stored value; an empty string
    * clears (removes) that field. `id`/`createdAt` can never change. */
   async update(id: string, patch: VaultEntryPatch): Promise<VaultEntry | undefined> {
+    this.assertNoSyncCommit()
     const current = this.entries.get(id)
     if (!current) return undefined
     // A title must never be blanked out: an empty-string title is an error
@@ -672,6 +930,7 @@ export class VaultStore {
   /** Soft-delete an entry (move to trash); returns true when it existed.
    * The entry stays encrypted on disk until purged or restored. */
   async delete(id: string): Promise<boolean> {
+    this.assertNoSyncCommit()
     const entry = this.entries.get(id)
     if (!entry || entry.deletedAt !== undefined) return false
     entry.deletedAt = Date.now()
@@ -682,6 +941,7 @@ export class VaultStore {
 
   /** Restore a trashed entry; returns true when it existed in trash. */
   async restore(id: string): Promise<boolean> {
+    this.assertNoSyncCommit()
     const entry = this.entries.get(id)
     if (!entry || entry.deletedAt === undefined) return false
     delete entry.deletedAt
@@ -693,6 +953,7 @@ export class VaultStore {
   /** Undo the most recent delete: restore the trashed entry deleted last.
    * Returns the restored summary (or undefined when the trash is empty). */
   async restoreRecent(): Promise<VaultEntrySummary | undefined> {
+    this.assertNoSyncCommit()
     const trashed = this.listTrash().sort((a, b) => ((b.deletedAt ?? 0) - (a.deletedAt ?? 0)) || b.id.localeCompare(a.id))
     const latest = trashed[0]
     if (!latest) return undefined
@@ -704,6 +965,7 @@ export class VaultStore {
 
   /** Permanently remove a trashed (or active) entry; returns true when it existed. */
   async purge(id: string): Promise<boolean> {
+    this.assertNoSyncCommit()
     const existed = this.entries.delete(id)
     if (existed) {
       this.recordHistory('purge', id)
@@ -826,6 +1088,7 @@ export class VaultStore {
   /** Merge `fromId` into `toId`: non-empty fields of `from` fill gaps in `to`,
    * then `from` is purged. Returns the merged entry or undefined. */
   async merge(fromId: string, toId: string, options: { keepSource?: boolean } = {}): Promise<VaultEntry | undefined> {
+    this.assertNoSyncCommit()
     const from = this.entries.get(fromId)
     const to = this.entries.get(toId)
     if (!from || !to || from.deletedAt !== undefined || to.deletedAt !== undefined) return undefined
@@ -849,6 +1112,7 @@ export class VaultStore {
 
   /** Touch an entry's updatedAt (mark as recently used); no other change. */
   async markUsed(id: string): Promise<VaultEntry | undefined> {
+    this.assertNoSyncCommit()
     const entry = this.entries.get(id)
     if (!entry || entry.deletedAt !== undefined) return undefined
     entry.updatedAt = Date.now()
@@ -867,6 +1131,7 @@ export class VaultStore {
    * millis). The current password is pushed onto the history first (so the
    * rollback itself is reversible). Returns the updated entry. */
   async rollbackPassword(id: string, at: number): Promise<VaultEntry | undefined> {
+    this.assertNoSyncCommit()
     const entry = this.entries.get(id)
     if (!entry) return undefined
     const history = [...(entry.passwordHistory ?? [])].sort((a, b) => b.at - a.at)
@@ -1006,6 +1271,7 @@ export class VaultStore {
    * unless `overwrite`). Returns the number of entries added.
    */
   async importEncrypted(blob: string, exportPassword: string, overwrite = false, dryRun = false): Promise<number> {
+    this.assertNoSyncCommit()
     if (exportPassword.length === 0) throw new Error('vault: export password must not be empty')
     const parsed = JSON.parse(blob) as {
       format?: number
@@ -1022,6 +1288,8 @@ export class VaultStore {
       return 0
     }
     const exportKey = await deriveKey(exportPassword, parsed.kdf)
+    // A sync may have started while the export KDF was running.
+    if (this.syncCommitInProgress || this.loadInProgress) { exportKey.fill(0); this.assertNoSyncCommit() }
     let added = 0
     try {
       for (const blobEntry of parsed.entries) {
@@ -1074,33 +1342,41 @@ export class VaultStore {
    * new cost parameter `n` for reporting.
    */
   async rekey(): Promise<{ n: number }> {
-    if (this.key === undefined) {
-      await this.load()
-    }
-    const newKdf = newKdfParams()
-    const newKey = await deriveKey(this.masterPassword, newKdf)
-    // Encrypt every entry under the new key first (in memory), so a failure
-    // mid-encrypt leaves the on-disk document untouched.
-    const reEncrypted = [...this.entries.values()].map(entry => ({
-      id: entry.id,
-      ...encrypt(Buffer.from(JSON.stringify(entry), 'utf8'), newKey),
-    }))
-    await mkdir(dirname(this.path), { recursive: true, mode: 0o700 })
-    const { withFileLock, writeFileAtomic } = await atomicWrite()
-    await withFileLock(this.path, async () => {
-      const file: VaultFile = {
-        version: VAULT_FORMAT_VERSION,
-        kdf: newKdf,
-        verify: encrypt(Buffer.from(VERIFY_PLAINTEXT, 'utf8'), newKey),
-        entries: reEncrypted,
+    this.assertNoSyncCommit()
+    this.keyChangesInProgress++
+    try {
+      if (this.key === undefined) {
+        await this.load()
       }
-      await writeFileAtomic(this.path, JSON.stringify(file), { mode: 0o600, dirMode: 0o700 })
-    })
-    this.kdf = newKdf
-    this.key?.fill(0)
-    this.key = newKey
-    notifyVaultPersist(this.path)
-    return { n: newKdf.n }
+      const newKdf = newKdfParams()
+      const newKey = await deriveKey(this.masterPassword, newKdf)
+      // Encrypt every entry under the new key first (in memory), so a failure
+      // mid-encrypt leaves the on-disk document untouched.
+      const reEncrypted = [...this.entries.values()].map(entry => ({
+        id: entry.id,
+        ...encrypt(Buffer.from(JSON.stringify(entry), 'utf8'), newKey),
+      }))
+      await mkdir(dirname(this.path), { recursive: true, mode: 0o700 })
+      const { withFileLock, writeFileAtomic } = await atomicWrite()
+      let committedHash: string | undefined
+      await withFileLock(this.path, async () => {
+        const file: VaultFile = {
+          version: VAULT_FORMAT_VERSION,
+          kdf: newKdf,
+          verify: encrypt(Buffer.from(VERIFY_PLAINTEXT, 'utf8'), newKey),
+          entries: reEncrypted,
+        }
+        const serialized = JSON.stringify(file)
+        await writeFileAtomic(this.path, serialized, { mode: 0o600, dirMode: 0o700 })
+        committedHash = createHash('sha256').update(serialized).digest('hex')
+      })
+      this.kdf = newKdf
+      this.key?.fill(0)
+      this.key = newKey
+      this.knownDiskHash = committedHash
+      notifyVaultPersist(this.path)
+      return { n: newKdf.n }
+    } finally { this.keyChangesInProgress-- }
   }
 
   /**
@@ -1131,6 +1407,11 @@ export class VaultStore {
   }
 
   async persist(): Promise<void> {
+    if (this.loadInProgress) throw new Error('SYNC_BUSY')
+    return this.enqueuePersist()
+  }
+
+  private enqueuePersist(): Promise<void> {
     const run = async (): Promise<void> => {
       const kdf = this.kdf ?? newKdfParams()
       this.kdf = kdf
@@ -1153,10 +1434,12 @@ export class VaultStore {
             ...encrypt(Buffer.from(JSON.stringify(entry), 'utf8'), key),
           })),
         }
-        await writeFileAtomic(this.path, JSON.stringify(file), {
+        const serialized = JSON.stringify(file)
+        await writeFileAtomic(this.path, serialized, {
           mode: 0o600,
           dirMode: 0o700,
         })
+        this.knownDiskHash = createHash('sha256').update(serialized).digest('hex')
       })
       // Notification is after the atomic write, never exposes decrypted data,
       // and observer failures must not turn a successful save into an error.
@@ -1173,13 +1456,16 @@ export class VaultStore {
   }
 
   /** Read and parse the vault document, tolerating first-run absence. */
-  private async readDocument(): Promise<{ file: VaultFile; created: boolean }> {
+  private async readDocument(): Promise<{ file: VaultFile; created: boolean; diskHash: string | undefined }> {
     let raw: string
+    let diskHash: string
     try {
-      raw = await readFile(this.path, 'utf8')
+      const bytes = await readFile(this.path)
+      raw = bytes.toString('utf8')
+      diskHash = createHash('sha256').update(bytes).digest('hex')
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-        return { file: { version: VAULT_FORMAT_VERSION, kdf: newKdfParams(), verify: EMPTY_BLOB, entries: [] }, created: true }
+        return { file: { version: VAULT_FORMAT_VERSION, kdf: newKdfParams(), verify: EMPTY_BLOB, entries: [] }, created: true, diskHash: undefined }
       }
       throw error
     }
@@ -1204,8 +1490,101 @@ export class VaultStore {
     if (!parsed.verify) {
       throw new Error(`${this.path} is missing its password-verification envelope`)
     }
-    return { file: parsed, created: false }
+    return { file: parsed, created: false, diskHash }
   }
+}
+
+const LOCAL_SYNC_MAGIC = 'dsh-vault:local-sync-state:v1'
+const SYNC_ERRORS = new Set(['SYNC_BUSY', 'SYNC_LOCKED', 'SYNC_NOT_AUTHORIZED', 'SYNC_LOCAL_CHANGED', 'SYNC_INVALID_STATE', 'SYNC_ROLLBACK_FAILED'])
+
+function isSyncHash(value: unknown): value is string {
+  return typeof value === 'string' && /^[a-f0-9]{64}$/.test(value)
+}
+
+/** JSON semantics with deterministic object keys, but no getters, cycles,
+ * exotic objects or silent non-finite-number coercion at the sync boundary. */
+function stableSyncJson(value: unknown): string {
+  const seen = new Set<object>()
+  let nodes = 0
+  const encode = (item: unknown, depth: number): string => {
+    if (++nodes > 2_000_000 || depth > 64) throw new Error('SYNC_INVALID_INPUT')
+    if (item === null) return 'null'
+    if (typeof item === 'string' || typeof item === 'boolean') return JSON.stringify(item)
+    if (typeof item === 'number' && Number.isFinite(item)) return JSON.stringify(item)
+    if (typeof item !== 'object' || seen.has(item)) throw new Error('SYNC_INVALID_INPUT')
+    const array = Array.isArray(item)
+    if (array && item.length > 2_000_000) throw new Error('SYNC_INVALID_INPUT')
+    if (!array && Object.getPrototypeOf(item) !== Object.prototype && Object.getPrototypeOf(item) !== null) throw new Error('SYNC_INVALID_INPUT')
+    const descriptors = Object.getOwnPropertyDescriptors(item)
+    if (Reflect.ownKeys(item).some(key => typeof key !== 'string')
+      || Object.values(descriptors).some(descriptor => !Object.hasOwn(descriptor, 'value'))) throw new Error('SYNC_INVALID_INPUT')
+    seen.add(item)
+    try {
+      if (array) return '[' + Array.from({ length: item.length }, (_, i) => encode(descriptors[String(i)]?.value, depth + 1)).join(',') + ']'
+      return '{' + Object.keys(descriptors).filter(key => descriptors[key]!.enumerable && descriptors[key]!.value !== undefined).sort()
+        .map(key => JSON.stringify(key) + ':' + encode(descriptors[key]!.value, depth + 1)).join(',') + '}'
+    } finally { seen.delete(item) }
+  }
+  return encode(value, 0)
+}
+
+function syncEntriesFingerprint(entries: VaultEntry[]): string {
+  const sorted = entries.slice().sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+  return createHash('sha256').update(stableSyncJson(sorted)).digest('hex')
+}
+
+/** Full entries, not patches: reject the entire result instead of normalizing
+ * away fields, reviving trash or overwriting caller-supplied timestamps. */
+function validateSyncEntries(value: unknown): VaultEntry[] {
+  try {
+    if (!Array.isArray(value) || value.length > 100_000) throw new Error()
+    const entries = JSON.parse(stableSyncJson(value)) as Array<Record<string, unknown>>
+    const ids = new Set<string>()
+    const stringFields = new Set(['id', 'title', 'icon', 'color', 'username', 'email', 'phone', 'password', 'host', 'port', 'privateKey', 'ip', 'certificate', 'keyPassphrase', 'apiKey', 'secret', 'accessToken', 'refreshToken', 'envKey', 'otpSecret', 'cardNumber', 'cardExpiry', 'cardCvv', 'cardHolder', 'url', 'notes'])
+    const numericFields = new Set(['createdAt', 'updatedAt', 'deletedAt', 'expiresAt', 'rotationDays'])
+    const specialFields = new Set(['kind', 'sshAuth', 'sensitivity', 'favorite', 'envKeys', 'tags', 'cookies', 'passwordHistory', 'attachments', 'fields'])
+    const object = (item: unknown): item is Record<string, unknown> => item !== null && typeof item === 'object' && !Array.isArray(item)
+    const finite = (item: unknown): item is number => typeof item === 'number' && Number.isFinite(item)
+    for (const entry of entries) {
+      if (!object(entry) || typeof entry.id !== 'string' || entry.id.trim().length === 0 || ids.has(entry.id)
+        || typeof entry.title !== 'string' || entry.title.trim().length === 0
+        || !finite(entry.createdAt) || entry.createdAt < 0 || !finite(entry.updatedAt) || entry.updatedAt < 0) throw new Error()
+      ids.add(entry.id)
+      for (const [key, field] of Object.entries(entry)) {
+        if (stringFields.has(key)) { if (typeof field !== 'string') throw new Error() }
+        else if (numericFields.has(key)) { if (!finite(field) || field < 0) throw new Error() }
+        else if (!specialFields.has(key)) throw new Error()
+      }
+      validatePatchTypes(entry)
+      if (entry.kind !== undefined && !['login', 'ssh', 'api-key', 'secret', 'oauth', 'cookie', 'card', 'custom'].includes(entry.kind as string)) throw new Error()
+      if (entry.sshAuth !== undefined && entry.sshAuth !== 'password' && entry.sshAuth !== 'certificate') throw new Error()
+      if (entry.sensitivity !== undefined && entry.sensitivity !== 'normal' && entry.sensitivity !== 'high') throw new Error()
+      if (entry.favorite !== undefined && typeof entry.favorite !== 'boolean') throw new Error()
+      if (entry.envKeys !== undefined && (!Array.isArray(entry.envKeys) || entry.envKeys.some(key => typeof key !== 'string'))) throw new Error()
+      if (entry.tags !== undefined && (!Array.isArray(entry.tags) || entry.tags.some(tag => typeof tag !== 'string'))) throw new Error()
+      if (entry.cookies !== undefined) {
+        if (!Array.isArray(entry.cookies)) throw new Error()
+        for (const cookie of entry.cookies) {
+          if (!object(cookie) || !['name', 'value', 'domain', 'path'].every(key => typeof cookie[key] === 'string')
+            || !finite(cookie.expires) || typeof cookie.httpOnly !== 'boolean' || typeof cookie.secure !== 'boolean'
+            || (cookie.sameSite !== undefined && !['Strict', 'Lax', 'None'].includes(cookie.sameSite as string))) throw new Error()
+        }
+      }
+      if (entry.passwordHistory !== undefined) {
+        if (!Array.isArray(entry.passwordHistory) || entry.passwordHistory.some(history => !object(history) || typeof history.password !== 'string' || !finite(history.at) || history.at < 0)) throw new Error()
+      }
+      if (entry.attachments !== undefined) {
+        if (!object(entry.attachments)) throw new Error()
+        for (const attachment of Object.values(entry.attachments)) {
+          if (!object(attachment) || typeof attachment.data !== 'string' || typeof attachment.name !== 'string'
+            || !Number.isSafeInteger(attachment.size) || (attachment.size as number) < 0
+            || (attachment.mime !== undefined && typeof attachment.mime !== 'string')) throw new Error()
+        }
+      }
+      if (entry.fields !== undefined && !object(entry.fields)) throw new Error()
+    }
+    return entries as unknown as VaultEntry[]
+  } catch { throw new Error('SYNC_INVALID_INPUT') }
 }
 
 /** Placeholder envelope for a not-yet-persisted vault; replaced on first persist. */
@@ -1245,6 +1624,7 @@ function matches(entry: VaultEntry, needle: string): boolean {
     entry.email,
     entry.phone,
     entry.host,
+    entry.ip,
     entry.port,
     entry.url,
     entry.notes,
@@ -1282,6 +1662,8 @@ function toSummary(entry: VaultEntry): VaultEntrySummary {
     ...(entry.email !== undefined ? { email: entry.email } : {}),
     ...(entry.phone !== undefined ? { phone: entry.phone } : {}),
     ...(entry.host !== undefined ? { host: entry.host } : {}),
+    ...(entry.ip !== undefined ? { ip: entry.ip } : {}),
+    ...(entry.sshAuth !== undefined ? { sshAuth: entry.sshAuth } : {}),
     ...(entry.port !== undefined ? { port: entry.port } : {}),
     ...(entry.url !== undefined ? { url: entry.url } : {}),
     ...(entry.tags !== undefined ? { tags: entry.tags } : {}),
@@ -1311,6 +1693,14 @@ function validatePatchTypes(patch: Record<string, unknown>): void {
         if (typeof value !== 'string' || !kindSet.has(value)) {
           throw new Error(`vault: kind must be one of ${[...kindSet].join(', ')}`)
         }
+        break
+      case 'sshAuth':
+        if (value !== 'password' && value !== 'certificate') throw new Error('vault: sshAuth must be password or certificate')
+        break
+      case 'ip':
+      case 'certificate':
+      case 'keyPassphrase':
+        if (typeof value !== 'string') throw new Error(`vault: ${key} must be a string`)
         break
       case 'sensitivity':
         if (value !== 'normal' && value !== 'high') {

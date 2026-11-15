@@ -1,0 +1,152 @@
+/**
+ * SPDX-License-Identifier: MIT
+ * Copyright (c) 2026 xiajiajun516
+ * Vendored from dsh-config-manager 0.8.2, commit 635c2e66388c9ec5929071d05e01abd77779366d.
+ * Original MIT permission and warranty notice: vendor/config-manager/LICENSE.
+ */
+/**
+ * t42 物理拆分（从 SyncSettingsView.tsx 拆出的渲染段，同领域目录平铺；v2 第 5 步主文件改名 SyncPanel.tsx）。
+ *
+ * 约定：只接收「渲染所需的数据 + 回调」；React 状态、副作用与网络调用仍由
+ * SyncPanel 持有（单一状态源）；可测纯逻辑在 src/ui/sync-settings-view.ts。
+ */
+import type { TranslateNS } from '../client-types.ts'
+import { Badge, Button, Card } from '../common/ui.tsx'
+import { ExpandChevron } from '../common/Icon.tsx'
+import { InfoHint } from '../common/InfoHint.tsx'
+import type { SyncStatusResponse } from './sync-api.ts'
+import type { SyncChannel } from './sync-view.ts'
+import { formatSyncStatusTimestamp, formatSyncUrlPreview, workdirStateKey, workdirStateBadgeKind } from '../../ui/sync-settings-view.ts'
+import { needsGitToken, SYNC_CHANNEL_LABEL_KEY } from './sync-view.ts'
+import css from '../config-manager.module.css'
+
+/** 同步通道入口卡：通道徽章 + 配置状态 + 状态事实行 + 打开配置弹窗 + 断开该通道配置。 */
+export function SyncChannelEntryCard({ t, channel, statusInfo, remoteReady, repoUrl, webdavUrl, s3Endpoint, gistId, onOpen, onClear, expanded, contentId, onToggleExpanded }: {
+  t: TranslateNS<'config-manager-sync'>
+  channel: SyncChannel
+  statusInfo: SyncStatusResponse | null
+  remoteReady: boolean
+  repoUrl: string
+  webdavUrl: string
+  /** s3 通道的端点（预览用；非密字段，可回显） */
+  s3Endpoint: string
+  /** gist 通道的 gist id（预览用；非密字段，可回显） */
+  gistId: string
+  onOpen: () => void
+  /** 请求断开该通道（未配置时按钮不渲染）；确认与执行由壳层负责（本卡不发请求） */
+  onClear: () => void
+  /**
+   * v3 §2.2-3：通道卡可折叠（4 个通道全展开远超 564×720 画布）。
+   * 未配置的通道走矮态、没有可折叠内容 —— 调用方只在 remoteReady 时传这三个 prop。
+   */
+  expanded?: (boolean) | undefined
+  /** 折叠体的 id（与 aria-controls 配对；由调用方给 Collapse 同一个 id） */
+  contentId?: (string) | undefined
+  onToggleExpanded?: (() => void) | undefined
+}) {
+  // issue #79：工作副本状态（git 专属）。只在**需要人管**的状态（仍指旧地址 / 读不出）挂徽章 ——
+  // 「尚未创建」是首次同步前的正常态，不值得占一个徽章位；完整事实在展开区的「工作副本」卡里。
+  const workdirKey = channel === 'git' ? workdirStateKey(statusInfo?.workDir) : null
+  const workdirKind = workdirStateBadgeKind(workdirKey)
+  const showWorkdirBadge = workdirKind === 'warn'
+  /** 事实行里的「当前远端」预览：按通道取那个真正标识远端的字段（gist 用 id，没有 URL） */
+  const previewRemote = channel === 'webdav'
+    ? webdavUrl
+    : channel === 's3'
+      ? s3Endpoint
+      : channel === 'gist'
+        ? gistId
+        : repoUrl
+  return (
+    <Card>
+      <div className={css.cardTitleRow}>
+        <span className={css.groupLabel}>{t('channel.title')} <InfoHint text={t('channel.openHint')} label={t('common.infoHint')} /></span>
+        {/* 上次同步是单条事实，贴标题行右端（见 .cardTitleRow 注释） */}
+        <span className={css.statusSpacer} />
+        <span className={css.factInline}>
+          {t('syncStatus.lastSync')}{' '}
+          {formatSyncStatusTimestamp(statusInfo?.lastSyncAt)}
+        </span>
+      </div>
+      <div className={css.statRow}>
+        <Badge kind="info">{t(SYNC_CHANNEL_LABEL_KEY[channel])}</Badge>
+        <Badge kind={remoteReady ? 'ok' : 'warn'}>
+          {remoteReady ? t('channel.configured') : t('channel.notConfigured')}
+        </Badge>
+        {channel === 'git' && statusInfo?.credentialConfigured === true && (
+          <Badge kind="ok">{t('config.tokenSaved')}</Badge>
+        )}
+        {/* 未配置令牌：拉取公开仓库仍可匿名成功，推送必失败（真机 128「Invalid username or token」）——
+            在点推送之前就说清楚，别让用户先把错误撞一遍。仅 http(s) 远端提示（本地/ssh 不需要令牌）。 */}
+        {channel === 'git' && statusInfo?.credentialConfigured !== true
+          && needsGitToken(statusInfo?.repoUrl ?? '') && (
+          <Badge kind="warn">{t('config.tokenMissing')}</Badge>
+        )}
+        {channel === 'webdav' && statusInfo?.webdav?.passwordConfigured === true && (
+          <Badge kind="ok">{t('webdav.passwordSaved')}</Badge>
+        )}
+        {/* 云端点通道：只回 secretStored 布尔（密钥值永不回传），据此显示「已保存」徽章 */}
+        {channel === 's3' && statusInfo?.s3?.secretStored === true && (
+          <Badge kind="ok">{t('cloud.secretSaved')}</Badge>
+        )}
+        {channel === 'gist' && statusInfo?.gist?.secretStored === true && (
+          <Badge kind="ok">{t('cloud.tokenSaved')}</Badge>
+        )}
+        {/* issue #79：改仓库地址后工作副本仍指旧地址（下一轮同步会自动重指向）—— 在卡上直接可见 */}
+        {showWorkdirBadge && workdirKey !== null && workdirKind !== null && (
+          <Badge kind={workdirKind}>{t(workdirKey)}</Badge>
+        )}
+      </div>
+      {/* 远端地址（Workbench：未配置时也要给硬事实）。
+          配置状态只由上面那排徽章表达：同一张卡里用「徽章 + 事实行」两处说同一件事，
+          用户得比对两遍才知道是不是同一状态。 */}
+      {remoteReady && (
+        <div className={css.factGrid} style={{ marginTop: 8 }}>
+          <div className={css.factCell}>
+            <span className={css.factLabel}>{t('channel.currentUrl')}</span>
+            <span className={css.factValue}>
+              <span className={css.mono}>
+                {formatSyncUrlPreview(previewRemote)}
+              </span>
+            </span>
+          </div>
+        </div>
+      )}
+      <div className={css.actionRowTop}>
+        {/* ghost 而不是 primary（2026-11-01）：本页唯一的主行动是「把本地改动推上去 /
+            把远端拉下来」，而那是下方 pickSyncPrimary 决定的那颗按钮。
+            配置入口与它并列同填充时，用户在首屏看到两个「主按钮」，谁也不会先按。 */}
+        <Button variant="ghost" onClick={onOpen}>
+          {t('channel.open')}
+        </Button>
+        {/* 断开出口：只有**配置过**的通道才渲染（未配置时这个按钮没有意义，也不该存在）。
+            危险操作用 danger 变体 + ConfirmDialog 二次确认（DESIGN.md §8.11）。 */}
+        {remoteReady && (
+          <Button variant="danger" onClick={onClear}>
+            {t('channel.clear')}
+          </Button>
+        )}
+        {onToggleExpanded !== undefined && (
+          <>
+            <span className={css.statusSpacer} />
+            {/* 展开/收起该通道的详情（内容区 / 加密 / 解密 / 自动同步）。
+                形态与 ContentPicker 的展开控件一致：原生 button + aria-expanded + aria-controls，
+                图标走 ExpandChevron 形变（折叠展开是它的合法用途）。 */}
+            <button
+              type="button"
+              className={css.iconBtn}
+              data-size="sm"
+              aria-expanded={expanded === true}
+              aria-controls={contentId}
+              aria-label={expanded === true ? t('channel.collapse') : t('channel.expand')}
+              title={expanded === true ? t('channel.collapse') : t('channel.expand')}
+              onClick={onToggleExpanded}
+            >
+              <ExpandChevron open={expanded === true} size={14} />
+            </button>
+          </>
+        )}
+      </div>
+    </Card>
+  )
+}

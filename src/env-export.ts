@@ -7,7 +7,7 @@
 /** Secret fields, most-primary first. The first present one is what an entry's
  * `envKey` names; the rest follow as `<envKey>_<SUFFIX>` (or `<TITLE>_<SUFFIX>`
  * when no envKey is set). */
-export const ENV_FIELD_ORDER = ['apiKey', 'secret', 'accessToken', 'refreshToken', 'privateKey', 'password', 'cardNumber', 'cardCvv'] as const
+export const ENV_FIELD_ORDER = ['apiKey', 'secret', 'accessToken', 'refreshToken', 'privateKey', 'password', 'cardNumber', 'cardCvv', 'keyPassphrase'] as const
 
 /** Field name → env-key suffix, so `title: DASHSCOPE` + `apiKey` renders the
  * vendor-standard `DASHSCOPE_API_KEY` rather than `DASHSCOPE_APIKEY`. */
@@ -17,6 +17,7 @@ export const ENV_FIELD_SUFFIX: Record<string, string> = {
   accessToken: 'ACCESS_TOKEN',
   refreshToken: 'REFRESH_TOKEN',
   privateKey: 'PRIVATE_KEY',
+  keyPassphrase: 'KEY_PASSPHRASE',
   password: 'PASSWORD',
   cardNumber: 'CARD_NUMBER',
   cardCvv: 'CARD_CVV',

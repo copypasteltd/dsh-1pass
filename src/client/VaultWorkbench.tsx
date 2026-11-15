@@ -9,9 +9,10 @@ import { VaultSection, type VaultSectionProps, type VaultWorkbenchCommand, type 
 import type { VaultLocaleKey } from './locales.ts'
 import { MAIN_PAGES, TASK_PAGES, activeTask, navLayout, openPage, openTask, readNavigation, routeTab, type MainPage, type TaskPage, type VaultTab } from './workbench/workbench-model.ts'
 import css from './VaultWorkbench.module.css'
+import { QuickImportPanel } from './QuickImportPanel.tsx'
 
 const NAV_KEYS: Record<MainPage, VaultLocaleKey> = { home: 'wbHome', entries: 'wbEntries', backup: 'wbBackup', permissions: 'wbSettings' }
-const TASK_KEYS: Record<TaskPage, VaultLocaleKey> = { security: 'wbSecurity', transfer: 'wbTransfer', sessions: 'wbSessions', audit: 'wbAudit', trash: 'wbTrash', about: 'wbAbout', activity: 'wbAudit' }
+const TASK_KEYS: Record<TaskPage, VaultLocaleKey> = { security: 'wbSecurity', transfer: 'wbTransfer', sessions: 'wbSessions', audit: 'wbAudit', trash: 'wbTrash', about: 'wbAbout', activity: 'wbAudit', 'quick-import': 'quickImportTitle', 'local-backups': 'wbLocalBackups' }
 const STORAGE_KEY = 'dsh-onepass-workbench-navigation'
 const INITIAL_SNAPSHOT: VaultWorkbenchSnapshot = { busy: false, locked: false, count: 0, vaultName: '', accessMode: '', editorOpen: false, ready: false, message: null, backups: 0, weak: 0, reused: 0, score: null, activity: [] }
 type Glyph = 'search' | 'activity' | 'history' | 'about' | 'back' | 'close' | 'down' | 'key' | 'cloud' | 'shield' | 'transfer' | 'sessions' | 'trash' | 'plus' | 'refresh'
@@ -43,6 +44,7 @@ export function VaultWorkbench(props: VaultSectionProps): ReactNode {
     try { return readNavigation(sessionStorage.getItem(STORAGE_KEY)) } catch { return readNavigation(null) }
   })
   const [snapshot, setSnapshot] = useState(INITIAL_SNAPSHOT)
+  const [importBusy, setImportBusy] = useState(false)
   const [command, setCommand] = useState<VaultWorkbenchCommand | null>(null)
   const commandId = useRef(0)
   const [boot, setBoot] = useState<'loading' | 'ready' | 'password' | 'error'>(props.setupStatus ? 'loading' : 'ready')
@@ -74,15 +76,17 @@ export function VaultWorkbench(props: VaultSectionProps): ReactNode {
   const issueCommand = useCallback((kind: VaultWorkbenchCommand['kind'], value?: string) => {
     setCommand({ id: ++commandId.current, kind, ...(value !== undefined ? { value } : {}) })
   }, [])
-  const goto = useCallback((page: MainPage) => { setMoreOpen(false); setNavigation(state => openPage(state, page)) }, [])
+  const goto = useCallback((page: MainPage) => { if (importBusy) return; setMoreOpen(false); setNavigation(state => openPage(state, page)) }, [importBusy])
   const open = useCallback((kind: TaskPage) => {
+    if (importBusy) return
     overlayOpener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
     setNavigation(state => openTask(state, kind))
-  }, [])
+  }, [importBusy])
   const closeTask = useCallback(() => {
+    if (importBusy) return
     setNavigation(state => ({ ...state, task: null }))
     queueMicrotask(() => { if (overlayOpener.current?.isConnected) overlayOpener.current.focus() })
-  }, [])
+  }, [importBusy])
   const onNavigate = useCallback((tab: VaultTab) => { setNavigation(state => routeTab(state, tab)) }, [])
   const create = useCallback(() => { setNavigation({ page: 'entries', task: null }); issueCommand('create') }, [issueCommand])
   const search = useCallback(() => { setNavigation({ page: 'entries', task: null }); issueCommand('search') }, [issueCommand])
@@ -165,29 +169,40 @@ export function VaultWorkbench(props: VaultSectionProps): ReactNode {
     queueMicrotask(() => { if (overlayOpener.current?.isConnected) overlayOpener.current.focus() })
   }, [])
   const showPalette = useCallback(() => {
-    if (snapshot.editorOpen) return
+    if (snapshot.editorOpen || importBusy) return
     overlayOpener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
     setPaletteQuery(''); setPaletteIndex(0); setPaletteOpen(true)
-  }, [snapshot.editorOpen])
+  }, [snapshot.editorOpen, importBusy])
   useEffect(() => { if (paletteOpen) paletteInput.current?.focus() }, [paletteOpen])
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
       if (event.target instanceof Element && event.target.closest('[data-vault-dialog]')) return
       const typing = event.target instanceof Element && !!event.target.closest('input,textarea,select,[contenteditable="true"]')
       if (typing) return
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k' && !snapshot.editorOpen) {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k' && !snapshot.editorOpen && !importBusy) {
         event.preventDefault(); event.stopPropagation(); if (paletteOpen) closePalette(); else showPalette()
-      } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'n' && !snapshot.editorOpen && boot === 'ready') {
+      } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'n' && !snapshot.editorOpen && !importBusy && boot === 'ready') {
         const typing = event.target instanceof Element && !!event.target.closest('input,textarea,select,[contenteditable="true"]')
         if (!typing) { event.preventDefault(); event.stopPropagation(); if (!snapshot.locked && snapshot.accessMode !== 'readonly') create() }
       }
     }
     window.addEventListener('keydown', key, true)
     return () => window.removeEventListener('keydown', key, true)
-  }, [showPalette, closePalette, paletteOpen, snapshot.editorOpen, snapshot.locked, snapshot.accessMode, create, boot])
-  const taskIsLocal = task === 'about' || task === 'activity'
+  }, [showPalette, closePalette, paletteOpen, snapshot.editorOpen, snapshot.locked, snapshot.accessMode, create, boot, importBusy])
+  // Boot and list states outrank operation messages, which may describe an older view.
+  const loadState = snapshot.loadState ?? (snapshot.ready ? 'ready' : 'loading')
+  const footerStatus = boot === 'loading' ? { text: t('wbBootLoading'), dot: 'unknown' }
+    : boot === 'error' ? { text: t('wbLoadFailed'), dot: 'warn' }
+    : boot === 'password' ? bootBusy ? { text: t('wbWorking'), dot: 'unknown' }
+      : { text: t(bootError ? 'wbOpenFailedStatus' : exists ? 'wbWaitingUnlock' : 'wbWaitingCreate'), dot: 'warn' }
+    : snapshot.locked ? { text: t('lockedShort'), dot: 'warn' }
+    : snapshot.busy ? { text: t('wbWorking'), dot: 'unknown' }
+    : loadState === 'error' ? { text: t('wbEntriesLoadFailed'), dot: 'warn' }
+    : loadState === 'loading' ? { text: t('wbEntriesLoading'), dot: 'unknown' }
+    : { text: snapshot.message || t('wbReady'), dot: 'ok' }
+  const taskIsLocal = task === 'about' || task === 'activity' || task === 'quick-import'
   const engineVisible = boot === 'ready' && ((!task && navigation.page !== 'home') || (!!task && !taskIsLocal) || snapshot.editorOpen)
-  const engineTab: VaultTab = task && !taskIsLocal ? task as VaultTab : navigation.page === 'home' ? 'entries' : navigation.page
+  const engineTab: VaultTab = task === 'local-backups' ? 'backup' : task && !taskIsLocal ? task as VaultTab : navigation.page === 'home' ? 'entries' : navigation.page
   const activityTable = <div className={css.card}>
     <header className={css.cardHead}><strong>{t('wbRecent')}</strong><button type="button" className={css.ghostButton} onClick={() => open('audit')}>{t('wbAudit')}</button></header>
     {!snapshot.ready ? <div className={css.empty} role="status">{t('loading')}</div> : snapshot.activity.length === 0 ? <div className={css.empty}>{t('wbNoActivity')}</div> : <>
@@ -198,14 +213,14 @@ export function VaultWorkbench(props: VaultSectionProps): ReactNode {
   return <div ref={root} className={css.section} data-vault-workbench="" aria-label={t('nav')}>
     <nav className={css.shellNav} aria-label={t('nav')}>
       <div ref={navRef} className={css.navStrip} role="tablist" onKeyDown={onTabsKeyDown}>
-        {visibleNav.map(page => <button key={page} id={tabKey(page)} className={css.navTab} type="button" role="tab" aria-selected={navigation.page === page} aria-controls={id + '-page'} tabIndex={navigation.page === page ? 0 : -1} data-active={navigation.page === page ? '' : undefined} disabled={snapshot.editorOpen} onClick={() => goto(page)}>{t(NAV_KEYS[page])}</button>)}
-        {overflowNav.length > 0 && <button ref={moreButton} type="button" id={id + '-more'} data-nav-more="" className={css.navMore} data-active={overflowNav.includes(navigation.page) ? '' : undefined} aria-haspopup="menu" aria-expanded={moreOpen} disabled={snapshot.editorOpen} onClick={() => setMoreOpen(value => !value)}>{t('wbMore')}<Icon name="down" size={12} /></button>}
+        {visibleNav.map(page => <button key={page} id={tabKey(page)} className={css.navTab} type="button" role="tab" aria-selected={navigation.page === page} aria-controls={id + '-page'} tabIndex={navigation.page === page ? 0 : -1} data-active={navigation.page === page ? '' : undefined} disabled={snapshot.editorOpen || importBusy} onClick={() => goto(page)}>{t(NAV_KEYS[page])}</button>)}
+        {overflowNav.length > 0 && <button ref={moreButton} type="button" id={id + '-more'} data-nav-more="" className={css.navMore} data-active={overflowNav.includes(navigation.page) ? '' : undefined} aria-haspopup="menu" aria-expanded={moreOpen} disabled={snapshot.editorOpen || importBusy} onClick={() => setMoreOpen(value => !value)}>{t('wbMore')}<Icon name="down" size={12} /></button>}
       </div>
       <div className={css.navActions}>
-        <button type="button" className={css.iconButton} title={t('wbCommands') + ' · Ctrl / ⌘ K'} aria-label={t('wbCommands')} disabled={snapshot.editorOpen} onClick={showPalette}><Icon name="search" /></button>
-        <button type="button" className={css.iconButton} aria-label={t('wbRecent')} title={t('wbRecent')} data-active={task === 'activity' ? '' : undefined} disabled={snapshot.editorOpen} onClick={() => open('activity')}><Icon name="activity" /></button>
-        <button type="button" className={css.iconButton} aria-label={t('wbAudit')} title={t('wbAudit')} data-active={task === 'audit' ? '' : undefined} disabled={snapshot.editorOpen} onClick={() => open('audit')}><Icon name="history" /></button>
-        <button type="button" className={css.iconButton} aria-label={t('wbAbout')} title={t('wbAbout')} data-active={task === 'about' ? '' : undefined} disabled={snapshot.editorOpen} onClick={() => open('about')}><Icon name="about" /></button>
+        <button type="button" className={css.iconButton} title={t('wbCommands') + ' · Ctrl / ⌘ K'} aria-label={t('wbCommands')} disabled={snapshot.editorOpen || importBusy} onClick={showPalette}><Icon name="search" /></button>
+        <button type="button" className={css.iconButton} aria-label={t('wbRecent')} title={t('wbRecent')} data-active={task === 'activity' ? '' : undefined} disabled={snapshot.editorOpen || importBusy} onClick={() => open('activity')}><Icon name="activity" /></button>
+        <button type="button" className={css.iconButton} aria-label={t('wbAudit')} title={t('wbAudit')} data-active={task === 'audit' ? '' : undefined} disabled={snapshot.editorOpen || importBusy} onClick={() => open('audit')}><Icon name="history" /></button>
+        <button type="button" className={css.iconButton} aria-label={t('wbAbout')} title={t('wbAbout')} data-active={task === 'about' ? '' : undefined} disabled={snapshot.editorOpen || importBusy} onClick={() => open('about')}><Icon name="about" /></button>
       </div>
     </nav>
     {moreOpen && <div ref={moreMenu} className={css.moreMenu} role="menu" aria-label={t('wbMore')} onKeyDown={event => {
@@ -213,7 +228,7 @@ export function VaultWorkbench(props: VaultSectionProps): ReactNode {
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { const buttons = Array.from(moreMenu.current?.querySelectorAll<HTMLButtonElement>('button') ?? []); const at = buttons.indexOf(document.activeElement as HTMLButtonElement); event.preventDefault(); buttons[(at + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length]?.focus() }
     }}>{overflowNav.map(page => <button key={page} type="button" role="menuitem" data-active={navigation.page === page ? '' : undefined} onClick={() => { goto(page); queueMicrotask(() => root.current?.querySelector<HTMLButtonElement>('[role="tab"][aria-selected="true"]')?.focus()) }}>{t(NAV_KEYS[page])}</button>)}</div>}
     <div className={css.shellContent} onKeyDown={event => {
-      if (event.key !== 'Escape' || !task || snapshot.editorOpen || root.current?.querySelector('[data-vault-dialog]')) return
+      if (event.key !== 'Escape' || !task || snapshot.editorOpen || importBusy || root.current?.querySelector('[data-vault-dialog]')) return
       if (task === 'transfer' || task === 'sessions') { event.stopPropagation(); return }
       event.preventDefault(); event.stopPropagation(); closeTask()
     }}>
@@ -233,11 +248,12 @@ export function VaultWorkbench(props: VaultSectionProps): ReactNode {
           <div className={css.statStrip}>
             <span className={css.statHealth}><span className={css.statusDot} data-state={!snapshot.ready ? 'unknown' : snapshot.locked ? 'warn' : 'ok'} />{!snapshot.ready ? t('loading') : snapshot.locked ? t('lockedShort') : t('wbReady')}</span>
             <button type="button" className={css.statSegment} onClick={() => goto('entries')}>{t('wbEntries')} <b>{snapshot.ready ? snapshot.count : '—'}</b></button>
-            <button type="button" className={css.statSegment} onClick={() => goto('backup')}>{t('wbLocalBackups')} <b>{snapshot.ready ? snapshot.backups : '—'}</b></button>
+            <button type="button" className={css.statSegment} onClick={() => open('local-backups')}>{t('wbLocalBackups')} <b>{snapshot.ready ? snapshot.backups : '—'}</b></button>
             <button type="button" className={css.statSegment} onClick={() => open('security')}>{t('wbSecurity')} <b>{snapshot.ready && snapshot.score !== null ? snapshot.score : '—'}</b></button>
           </div>
           <div className={css.toolRow} aria-label={t('wbQuickActions')}>
             <button className={css.primaryButton} type="button" onClick={create} disabled={!snapshot.ready || snapshot.locked || snapshot.accessMode === 'readonly'}><Icon name="plus" />{t('wbNew')}</button>
+            <button className={css.ghostButton} type="button" onClick={() => open('quick-import')} disabled={!snapshot.ready || snapshot.locked || snapshot.accessMode === 'readonly'}><Icon name="transfer" />{t('quickImportEntry')}</button>
             <button className={css.ghostButton} type="button" onClick={() => open('transfer')}><Icon name="transfer" />{t('wbTransfer')}</button>
             <button className={css.ghostButton} type="button" onClick={() => goto('backup')}><Icon name="cloud" />{t('wbBackup')}</button>
             <button className={css.ghostButton} type="button" onClick={() => issueCommand('refresh')} disabled={snapshot.busy}><Icon name="refresh" />{t('wbRefresh')}</button>
@@ -249,20 +265,20 @@ export function VaultWorkbench(props: VaultSectionProps): ReactNode {
         </div>
       </main>
       {task !== null && <header ref={taskHead} tabIndex={-1} className={css.taskHead} aria-label={t(TASK_KEYS[task])}>
-        <button className={css.ghostButton} type="button" onClick={closeTask} disabled={snapshot.editorOpen}><Icon name="back" />{t('wbBack').replace('{page}', t(NAV_KEYS[navigation.page]))}</button>
+        <button className={css.ghostButton} type="button" onClick={closeTask} disabled={snapshot.editorOpen || importBusy}><Icon name="back" />{t('wbBack').replace('{page}', t(NAV_KEYS[navigation.page]))}</button>
         <strong>{t(TASK_KEYS[task])}</strong><span className={css.spacer} />
-        <button className={css.iconButton} type="button" aria-label={t('wbClose')} disabled={snapshot.editorOpen} onClick={closeTask}><Icon name="close" /></button>
+        <button className={css.iconButton} type="button" aria-label={t('wbClose')} disabled={snapshot.editorOpen || importBusy} onClick={closeTask}><Icon name="close" /></button>
       </header>}
       {boot === 'ready' && <div ref={engineScroll} className={task ? css.taskBody : css.engineBody} hidden={!engineVisible} data-editor-open={snapshot.editorOpen ? '' : undefined} role={task ? 'region' : 'tabpanel'} id={navigation.page !== 'home' && !task ? id + '-page' : undefined} aria-labelledby={!task && navigation.page !== 'home' ? activeTabId : undefined} aria-label={task ? t(TASK_KEYS[task]) : undefined} onKeyDown={event => {
         if (event.key === 'Escape' && task && (task === 'audit' || task === 'security' || task === 'trash') && !snapshot.editorOpen && !root.current?.querySelector('[data-vault-dialog]')) { event.stopPropagation(); event.preventDefault(); closeTask() }
-      }}><VaultSection {...props} embedded activeTab={engineTab} onNavigate={onNavigate} onStatusChange={setSnapshot} command={command} /></div>}
+      }}><VaultSection {...props} embedded backupView={task === 'local-backups' ? 'local' : 'cloud'} onQuickImport={() => open('quick-import')} activeTab={engineTab} onNavigate={onNavigate} onStatusChange={setSnapshot} command={command} /></div>}
       {taskIsLocal && <section className={css.localTask} role="region" aria-label={t(TASK_KEYS[task!])} tabIndex={-1} onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); closeTask() } }}><div className={css.pagePad}>
-        {task === 'activity' ? activityTable : <div className={css.card}><header className={css.cardHead}><Icon name="key" size={18} /><strong>{t('nav')}</strong><span className={css.spacer} /><span>v{metadata.version}</span></header><div className={css.formBody}><p>{t('wbAboutText')}</p><p className={css.hint}>{t('wbAboutStorage')}</p><p className={css.hint}>{t('wbPrivacy')}</p><a href="https://github.com/copypasteltd/dsh-1pass" target="_blank" rel="noreferrer">GitHub · DSH-1pass</a></div></div>}
+        {task === 'quick-import' ? (props.previewQuickImport && props.commitQuickImport ? <QuickImportPanel key={snapshot.vaultName} t={t} previewQuickImport={props.previewQuickImport} commitQuickImport={props.commitQuickImport} {...(props.discardQuickImport ? { discardQuickImport: props.discardQuickImport } : {})} readonly={snapshot.accessMode === 'readonly'} locked={snapshot.locked} unavailable={!snapshot.ready || snapshot.busy} vaultName={snapshot.vaultName || 'default'} onImported={() => issueCommand('refresh')} onBusyChange={setImportBusy} /> : <p role="alert">{t('quickImportUnavailable')}</p>) : task === 'activity' ? activityTable : <div className={css.card}><header className={css.cardHead}><Icon name="key" size={18} /><strong>{t('nav')}</strong><span className={css.spacer} /><span>v{metadata.version}</span></header><div className={css.formBody}><p>{t('wbAboutText')}</p><p className={css.hint}>{t('wbAboutStorage')}</p><p className={css.hint}>{t('wbPrivacy')}</p><a href="https://github.com/copypasteltd/dsh-1pass" target="_blank" rel="noreferrer">GitHub · DSH-1pass</a></div></div>}
       </div></section>}
     </div>
     <footer className={css.statusBar}>
-      <span className={css.statusDot} data-state={snapshot.locked ? 'warn' : snapshot.ready ? 'ok' : 'unknown'} />
-      <span className={css.statusText} role="status" aria-live="polite">{snapshot.message || (bootBusy || snapshot.busy ? t('wbWorking') : snapshot.locked ? t('lockedShort') : boot === 'ready' && snapshot.ready ? t('wbReady') : t('wbStatusUnknown'))}</span>
+      <span className={css.statusDot} data-state={footerStatus.dot} aria-hidden="true" />
+      <span className={css.statusText} role="status" aria-live="polite">{footerStatus.text}</span>
       {snapshot.vaultName && <span className={css.statusVault}>{snapshot.vaultName}</span>}<span className={css.spacer} /><span title={t('wbVersion')}>v{metadata.version}</span>
     </footer>
     <div ref={measureRef} className={css.navMeasure} aria-hidden="true"><button type="button" tabIndex={-1} className={css.navMore}>{t('wbMore')}<Icon name="down" size={12} /></button>{MAIN_PAGES.map(page => <button type="button" tabIndex={-1} className={css.navTab} key={page}>{t(NAV_KEYS[page])}</button>)}</div>

@@ -12,6 +12,7 @@ import type { VaultSectionInjected } from './VaultSection.tsx'
 import { VaultWorkbench } from './VaultWorkbench.tsx'
 import type { VaultSectionTypes } from './VaultSection.tsx'
 import type { CloudBackupSettings, CloudBackupView } from '../cloud-backup-types.ts'
+import type { QuickImportPreview, QuickImportCommitResult } from '../quick-import-types.ts'
 import { en, zh } from './locales.ts'
 
 type ClientContext = Context & VaultHostServices
@@ -52,6 +53,9 @@ export function apply(ctx: ClientContext): void {
     t,
     setupStatus: () => invoke<{ configured: boolean; exists: boolean }>('setupStatus'),
     openWithPassword: (password) => invoke<{ locked: boolean; entries: number }>('openWithPassword', { password }),
+    previewQuickImport: (text, options) => invoke<QuickImportPreview>('previewQuickImport', { text, options }),
+    commitQuickImport: (token, lines, confirm) => invoke<QuickImportCommitResult>('commitQuickImport', { token, lines, confirm }),
+    discardQuickImport: (token) => invoke<{ discarded: boolean }>('discardQuickImport', { token }),
     config: () => invoke<VaultSectionTypes['config']>('config'),
     setAccessMode: (mode) => invoke<VaultSectionTypes['config']>('setAccessMode', { mode }),
     setToolProfile: (profile: 'basic' | 'standard' | 'full' | 'custom', groups?: string[]) => invoke<{ toolProfile: 'basic' | 'standard' | 'full' | 'custom'; tools: number; toolGroups: string[] }>('setToolProfile', { profile, ...(groups !== undefined ? { groups } : {}) }),
@@ -70,6 +74,7 @@ export function apply(ctx: ClientContext): void {
     stats: () => invoke<Record<string, unknown>>('stats'),
     recent: () => invoke<{ entries: unknown[] }>('recent').then(r => r.entries),
     backupStatus: () => invoke<{ daysSinceBackup: number; backups: number }>('backupStatus'),
+    cloudSyncCall: (action, payload) => invoke<unknown>('cloudSyncCall', { action, payload }),
     cloudBackup: () => invoke<CloudBackupView>('cloudBackup'),
     setCloudBackup: (settings: CloudBackupSettings) => invoke<CloudBackupView>('setCloudBackup', { settings }),
     runCloudBackup: () => invoke<CloudBackupView>('runCloudBackup'),

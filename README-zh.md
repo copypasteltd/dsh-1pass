@@ -1,78 +1,404 @@
-# dsh-vault — 加密凭据保险库插件
+# dsh-1pass · DeepSeek Harness 加密凭据管理
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![npm version](https://img.shields.io/npm/v/dsh-vault?color=cb3837&logo=npm)](https://www.npmjs.com/package/dsh-vault)
-[![GitHub Release](https://img.shields.io/github/v/release/Ox0400/dsh-vault?logo=github)](https://github.com/Ox0400/dsh-vault/releases)
-[![npm downloads](https://img.shields.io/npm/dm/dsh-vault)](https://www.npmjs.com/package/dsh-vault)
-[![GitHub issues](https://img.shields.io/github/issues/Ox0400/dsh-vault)](https://github.com/Ox0400/dsh-vault/issues)
-[![已收录: awesome-dsh-plugin](https://img.shields.io/badge/已收录-awesome--dsh--plugin-2ea44f)](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/blob/main/README.zh.md#L2869)
-[![已收录: awesome-deepseek-harness](https://img.shields.io/badge/已收录-awesome--deepseek--harness-2ea44f)](https://github.com/Dominic789654/awesome-deepseek-harness/blob/main/README.zh-CN.md#L903)
+[English](<README.md>) | [简体中文](<README-zh.md>)
 
-[English](README.md) | **中文**
+**本地优先的密码工作台、113 个可发现的模型工具、便于脚本使用的 CLI，以及最小披露的 /1pass 技能。**
 
-dsh-vault 是一个面向 DeepSeek Harness 的安全加密插件：把你在使用 AI 过程中产生的**用户名、邮箱、手机号、密码、二次动态密钥（TOTP）** 以及开发工作流中常用的 **SSH 连接、API Key、Secret、OAuth access/refresh token** 等敏感凭据加密存储，并通过模型工具提供增删改查、检索、密码生成与动态验证码生成能力。
+软件包／插件／CLI 名称：**dsh-vault**。设置页名称：**密码管理(1pass)** / **Password Manager (1pass)**。
+仓库：[copypasteltd/dsh-1pass](https://github.com/copypasteltd/dsh-1pass)。
+当前源码版本：**1.12.2**；本文描述当前源码，**不代表 GitHub 已存在 v1.12.2 Release，也不代表 npm 已发布该版本**。
+“1pass” 是本项目工作台与技能名称，不是商业产品 1Password；1Password 是支持的导入／导出格式之一。
 
-**安全性与实现**
+> 主密码、批量凭据和云端鉴权令牌不要粘贴进聊天。请在本地 GUI 或已授权的秘密输入通道填写。找到凭据不等于获准连接、部署、导出或修改账号。
 
-- **零外部依赖**：全部加密基于 Node 内置 `node:crypto`（AES-256-GCM 认证加密 + scrypt 密钥派生 + RFC 6238 TOTP），不引入任何第三方加密库。
-- **主密码**：所有条目由 `scrypt(主密码, 盐)` 派生的 256 位密钥经 **AES-256-GCM** 加密。密钥永不落盘；进程内解锁后缓存复用（避免每次写入重复 scrypt），重启后重新派生。
-- **防篡改**：GCM 认证标签 + 文档内固定明文的校验信封，错误主密码、密文被改动都会立即失败，绝不返回垃圾数据。
-- **磁盘无明文**：加密文档中不含任何明文凭据；每个条目独立随机 nonce。
-- **原子写入**：复用 harness 的 `writeFileAtomic` + 文件锁，任何时刻磁盘上都是完整的新/旧文档；进程内写入串行化、跨进程写入加锁。
-- **检索不泄密**：`vault_search` 只返回摘要（id/标题/分类/用户名/邮箱/手机/主机/端口/URL/标签），**绝不返回密码、密钥、令牌与 TOTP 密钥**；完整凭据只能通过 `vault_get` 按 id 显式读取。
+## 目录
 
-## 条目模型
+- [功能概览](#功能概览)
+- [安装与构建](#安装与构建)
+- [首次解锁与语言切换](#首次解锁与语言切换)
+- [/1pass 工作流](#1pass-工作流)
+- [凭据模型](#凭据模型)
+- [GUI 全页面与操作 GIF](#gui-全页面与操作-gif)
+- [加密云端同步](#加密云端同步)
+- [本地与旧版备份](#本地与旧版备份)
+- [访问权限与安全](#访问权限与安全)
+- [命令行](#命令行)
+- [环境变量导出](#环境变量导出)
+- [工具档位](#工具档位)
+- [工具](#工具)
+- [配置](#配置)
+- [故障排查](#故障排查)
+- [开发与发布](#开发与发布)
+- [延伸文档与许可](#延伸文档与许可)
 
-每条记录包含一个 `title`、一个可选 `kind` 分类，以及任意组合的字段：
+## 功能概览
 
-| 字段 | 说明 |
+- 在本机使用 **AES-256-GCM + scrypt** 保存登录账号、SSH 密码／私钥、API Key、OAuth 令牌、TOTP 设置密钥、银行卡、cookie 与自定义字段。
+- 提供跟随宿主主题的中英双语工作台：搜索、收藏、标签、分类型编辑器、遮罩预览、附件、历史、安全报告与回收站。
+- 提供 **Git、WebDAV、S3 兼容对象存储、Gist** 四种加密条目快照同步，包含预览、明确确认、三方合并和逐通道自动同步控制。
+- 支持浏览器与密码管理器数据迁移，并明确区分加密备份与明文导出文件。
+- 让助手先发现摘要、再按需读取最小字段；也可让已授权的消费程序通过 CLI 自行取用秘密。
+- 默认只注册 **11 个核心工具**，不把全部 113 个工具塞进上下文；管理、导入导出、会话与库文件操作按需启用。
+- 兼容既有加密库与环境变量部署；首次 GUI 设置无需把主密码写进配置。
+
+**不同存储，职责不同：** DSH 宿主凭据（供应商令牌、同步凭据槽）**不是** 1pass 条目。存进 DSH 自身凭据服务的令牌不会自动成为可被 vault_search 搜索的条目，反之亦然。
+
+## 安装与构建
+
+### 环境要求
+
+- **Node.js >= 20**；插件 GUI 与模型工具需要兼容的 DeepSeek Harness。
+- 源码构建使用 npm 或 pnpm；Git 同步通道需要 PATH 中可用的 **Git**。
+- 打开手动登录窗口需要可选的 **playwright-core** 与可用浏览器；普通 CLI 读取不需要浏览器。
+- 软件包声明的 DSH peer 服务由宿主／profile 提供；独立 CLI 读取不会启动 DSH GUI。
+
+### 构建当前仓库
+
+以下安装当前仓库源码，不假设 npm 注册表已经更新：
+
+~~~sh
+git clone git@github.com:copypasteltd/dsh-1pass.git
+cd dsh-1pass
+npm install --ignore-scripts
+npm run build
+node lib/cli.js --help
+~~~
+
+构建脚本会编译宿主代码与浏览器 bundle。先忽略安装脚本、再显式构建，便于核对实际执行；也可使用对应的 pnpm 项目脚本。
+
+### 安装到 DSH profile
+
+构建后在仓库根目录执行，web 请替换为实际使用的 profile：
+
+~~~sh
+dsh plugin --profile web add .
+~~~
+
+如果你的 DSH 通过 pnpm 启动，把 dsh 换成 pnpm dsh。bundle patch 会插入 vault 插件行，不要手工再加一份相同插件。
+也可以把本地实际生成的 tarball 安装到 profile：
+
+~~~sh
+npm pack
+dsh plugin --profile web add ./dsh-vault-1.12.2.tgz
+~~~
+
+文件名来自当前 manifest；本地打包不等于发布 Release。dsh plugin --profile web add dsh-vault 安装的是**注册表中的版本**，可能与当前源码不同。
+Git 依赖安装会执行 prepare 构建；pnpm 的构建审批策略可能阻止它。如果无法审阅相应构建许可，优先使用显式源码构建／tarball 路径。
+
+### CLI 的实际入口
+
+| 安装方式 | 调用方式 |
 |---|---|
-| `kind` | `login`（默认）/ `ssh` / `api-key` / `secret` / `oauth` / `cookie` / `card` / `custom` |
-| `username` / `email` / `phone` | 账号身份 |
-| `password` | 密码 |
-| `host` / `port` | SSH 主机与端口（如 `db.internal` / `2222`） |
-| `privateKey` | SSH 私钥（PEM） |
-| `apiKey` | API 密钥 |
-| `secret` | 通用 Secret（client secret、共享密钥等） |
-| `accessToken` / `refreshToken` / `expiresAt` | OAuth 令牌对与过期时间（epoch millis） |
-| `otpSecret` | TOTP 密钥（Base32 或 otpauth:// URI） |
-| `url` / `notes` / `tags` | 元信息 |
+| 已构建源码 | node lib/cli.js list 或 npm run vault -- list |
+| 作为 profile 依赖安装 | dsh plugin --profile web exec dsh-vault list |
+| 已全局安装软件包 | dsh-vault list |
 
-其中两种 kind 有各自的形状:`cookie` 条目保存捕获的浏览器会话;`card` 条目保存 `cardNumber` / `cardExpiry`(MM/YY)/ `cardCvv` / `cardHolder` —— 检索摘要只暴露到期日与持卡人,绝不给卡号与 CVV;导出 Bitwarden JSON 时映射为 `card` 项(type 3,品牌自动推断)。
-| `fields` | 任意附加键值（如 `{"region": "us-east-1"}`），可检索 |
+手工链接文件夹不一定会生成 profile 的可执行 shim。可先用源码 CLI，或通过正常插件依赖安装流程修复，不要假定命令必然存在。
+注册表／全局安装很方便，但依赖当前源码功能前先核对 dsh-vault --version。
+
+## 首次解锁与语言切换
+
+1. 启用插件，打开 **设置 → 密码管理(1pass)**（英文：**Settings → Password Manager (1pass)**）。
+2. 新库输入并确认非空主密码；已有库输入原来的主密码。强度提醒不阻止保存，但仍应选择强且唯一的口令。
+3. 首次表单只把密码发送给本地 DSH 宿主，运行时解锁材料保留在内存，不写入浏览器存储、URL、模型参数或明文配置行。
+4. 宿主重启后需要重新输入，除非你主动配置了环境变量解锁。使用锁库与自动锁定减少闲置暴露。
+5. 在 **DSH 宿主的语言／偏好设置**切换 English 或简体中文，再回到 1pass。插件跟随宿主 locale，**没有独立的每库语言开关**。本文与[中文 GUI 指南](<docs/gui-guide-zh.md>)均提供对应英文版本。
+
+**GUI 已解锁，不等于独立 CLI 已解锁。** CLI 是另一个进程，直接打开库文件，需要自己的主密码输入。它不会读取 GUI 内存，也不会自动从宿主凭据槽取得解锁密钥。
+
+## /1pass 工作流
+
+可复用技能源码位于 [skills/1pass/SKILL.md](<skills/1pass/SKILL.md>)。
+请通过你的 DSH 常规 Skills 导入／创建入口，使用技能名 **1pass** 与该源码。克隆仓库或安装插件**不会自动安装本地技能**。若创建技能被权限拒绝，应请用户开放正规入口，不能改写宿主技能目录绕过。
+
+示例仅使用合成标题与文档保留地址，不涉及真实账号：
+
+~~~text
+/1pass demo-server
+/1pass demo-server only host username port
+/1pass use demo-api for authorized task
+~~~
+
+执行顺序刻意保持如下：
+
+1. **先摘要：** 搜索 demo-server，只展示标题、类型与必要的非秘密身份／主机摘要，不读取密码。
+2. **再消歧：** 多条匹配时，让用户选择 ID／标题与真实目标；不跨库猜测，不把近似名称当成同一服务器。
+3. **最小字段、即时读取：** 元数据请求只需要 host／username／port。只有已授权消费程序确实需要时才读取 API Key、密码、私钥或当前 TOTP。
+4. **安全交接：** 优先让消费程序自行调用 dsh-vault get，或直接执行已批准的粘贴；不要在回答、日志、URL 或命令参数中回显秘密。
+5. **验证实际操作：** 只找到凭据就说“已找到凭据”；只有 SSH／远程工具真实报告成功才说“SSH 已连接”。读取密码库既不会连接服务器，也不会证明密码正确。
+
+模型工具调用顺序示意（不是自动建立连接）：
+
+~~~json
+{"query":"demo-server","kind":"ssh"}
+{"id":"<chosen-entry-id>","fields":["host","username","port"]}
+~~~
+
+对于已安装 CLI，dsh-vault get demo-server --field host 只读取该字段。秘密字段应由已授权消费进程内部取得。--mask 只是部分预览，可能保留前缀、自定义／元数据也可能不遮罩，不能当作无秘密的存在性检查。安全的选定 ID 读取被拒绝或不可用时应停止，不改用 vault_fill 或大范围导出。
+技能提供操作指导，不新增授权边界、网络能力，也不能绕过锁库或只读策略。
+
+## 凭据模型
+
+条目包含 title、id、kind 与相关字段。标题不要求唯一，出现歧义时使用 ID。
+
+| 类型／字段组 | 数据与用途 |
+|---|---|
+| login | username、email、phone、password、url |
+| ssh／密码 | host、可选 ip、port、username、sshAuth=password、password |
+| ssh／证书或私钥 | host、ip、port、username、sshAuth=certificate、privateKey、可选 certificate 与 keyPassphrase |
+| api-key／secret | apiKey 或 secret，可附属主／网址／备注 |
+| oauth | accessToken、refreshToken、expiresAt（毫秒时间戳），客户端元数据存 fields |
+| TOTP | otpSecret 为 Base32 或单账号 otpauth://totp/ 设置链接，可与其他类型共存 |
+| card | cardNumber、cardExpiry、cardCvv、cardHolder；摘要不含卡号与 CVV |
+| cookie | 浏览器会话 cookie；cookie 值本身就是账号凭据 |
+| custom | 任意字段，保留嵌套值；不要把秘密放进标题／标签 |
+| 组织与策略 | tags、favorite、icon、color、notes、sensitivity、rotationDays |
+| 脚本命名 | envKeys 为按顺序指定的精确变量名；兼容旧 envKey；env 标签决定批量导出范围 |
+| 历史与文件 | 历史密码与附件作为条目内容加密保存 |
+
+SSH“证书”是可选的 **OpenSSH 用户证书**，不是网站 TLS 证书。私钥文本形状检查不等于登录验证。host 与 ip 独立，端口范围为 1–65535。
+TOTP 输入的是**设置密钥**，不是手机今天显示的六位验证码。当前支持的设置链接使用 SHA-1；二维码图片、otpauth-migration:// 多账号迁移与不支持的算法不会被静默当作有效密钥。
+模板保存字段结构／提示，**不保存实际密码、私钥、卡号或自定义字段内容**。
+
+## GUI 全页面与操作 GIF
+
+完整逐步说明见[中文 GUI 操作指南](<docs/gui-guide-zh.md>)，覆盖所有页面、工作流、语言切换与安全边界。
+四个主入口是**首页、密码簿、云端同步、设置**；窄屏的**更多**、首页快捷操作与命令面板提供其他任务入口。
+
+| 页面／任务 | 可进行的操作 |
+|---|---|
+| 首页 | 查看库状态、数量、健康与备份提示，打开快捷操作与最近活动 |
+| 密码簿 | 搜索，组合类型／标签／收藏／到期／风险筛选，排序、展开与行菜单 |
+| 凭据编辑器 | 选模板、填写分类型字段、按需显示秘密、管理附件／TOTP／元数据 |
+| 快速导入 | 解析本地粘贴的多行文本，核对遮罩结果，选择有效非重复行，再明确确认 |
+| 安全检查 | 弱密码／重复密码、缺少 2FA、HTTP 网址、到期、重复条目与泄漏检查 |
+| 导入／导出 | 预览支持的格式，谨慎选择覆盖，辨认明文导出 |
+| 云端同步 | 配置四通道与同步密码、预览／确认、合并、远端历史及自动同步 |
+| 本地备份 | 创建／列出／恢复／删除本机加密副本；旧版云备份只用于迁移 |
+| 设置 | 管理命名库、访问模式、自动捕获、自动锁定、工具档位与恢复码状态 |
+| 标签 | 在密码簿标签管理或设置摘要中，批量重命名／移除标签 |
+| 会话 | 打开手动登录窗口，收集保存 cookie，查看／导出／导入／清理，再关闭窗口 |
+| 活动／历史 | 按读取／搜索／写入筛选事件；不是持久化司法取证账本 |
+| 回收站 | 恢复单条／全部，或明确确认永久清除 |
+| 关于 | 查看软件包版本、本地存储说明与许可归属 |
+| 命令面板 | 搜索页面与操作，无需逐层寻找溢出菜单 |
+
+以下六组中英配对 GIF 是**合成 fixture 的 UI 演示**，不是读取真实密码库、实时 GitHub 授权或真实云账号端到端成功的录屏。fixture 可在未连接供应商时展示预览状态。GIF 与指南位于 GitHub 仓库／源码目录，不应假设 npm 包捆绑媒体。
+
+### 1. 概览、导航与语言
+
+![合成中文演示：首页、导航与语言](<docs/media/overview-zh.gif>)
+
+### 2. 凭据、模板与快速导入
+
+![合成中文演示：凭据与遮罩快速导入](<docs/media/credentials-zh.gif>)
+
+### 3. 导入与导出
+
+![合成中文演示：迁移预览与明文导出警告](<docs/media/transfer-zh.gif>)
+
+### 4. 云端同步
+
+![合成中文演示：四通道、预览与冲突合并](<docs/media/cloud-sync-zh.gif>)
+
+### 5. 安全、活动、本地备份与回收站
+
+![合成中文演示：安全检查与历史任务](<docs/media/security-history-zh.gif>)
+
+### 6. 设置与会话
+
+![合成中文演示：策略、工具档位与会话管理](<docs/media/settings-sessions-zh.gif>)
+
+快捷键：**Ctrl/Cmd+K** 打开命令面板；未在输入文字、且库可写并解锁时，**Ctrl/Cmd+N** 新建条目。面板中方向键／Enter 选择命令，Escape 关闭当前插件浮层；主标签支持方向键／Home／End 移动焦点。作用域与编辑器例外见指南。
+
+## 加密云端同步
+
+**当前云端同步不是旧版原始库文件上传器。** 它序列化完整的**自定义条目快照**，再用**独立同步密码**加密；包含活动条目、回收站、历史密码、cookie 与附件，**不是逐字节复制原始库文件**，也不上传无关的 DSH 设置、插件、MCP 或会话配置。
+另一台设备需要相同的同步解密密码，但可以使用不同的本地主密码。
+
+快照格式为 1pass-cloud-snapshot-v1。**元数据是明文：** 快照 ID／时间／内容哈希、通道、库与设备名称、平台／版本标记、分区信息仍可见；载荷使用 AES-256-GCM + scrypt。库与设备名不要包含秘密。合并共同祖先／本地基准也加密保存。
+通道鉴权与同步密码保存在 **DSH 宿主凭据槽**，不会作为可编辑明文配置返回，也不会自动成为 1pass 条目。
+
+### 配置一个通道
+
+1. 打开云端同步，选择 Git、WebDAV、S3 或 Gist。
+2. 保存非秘密目标设置，在遮罩配置框填入鉴权。设置该通道加密／解密密码，不要粘贴到聊天。
+3. 测试／刷新实际目标状态；读探测成功不证明具有写权限。
+4. 选择密码库分区，强制加密。首次推送或拉取先预览，再明确确认。
+5. 完成人工核对的手动往返之后，再考虑自动同步。
+
+| 通道 | 配置与边界 |
+|---|---|
+| Git | 真实 clone／fetch／ff-only／commit／非 force push；HTTPS token 或现有 SSH key／agent。分支默认从**远端 HEAD 自动识别**，也可显式指定；默认子目录 **1pass**。不 force push，不自动破坏性重置。 |
+| WebDAV | HTTPS URL、用户名、密码、前缀（默认 1pass）；强 ETag 条件写保护索引，缺失／弱 ETag 时存在已说明的非原子窗口。 |
+| S3 兼容 | provider、endpoint、region、bucket、prefix、access-key id 与 secret、寻址／签名方言；AWS 风格条件写依赖服务端支持。OSS 索引先 HEAD 再写，**不是原子 CAS**。 |
+| Gist | Gist ID 与 token，默认文件前缀 1pass；读／合并／写／验证不能阻止覆盖**尚未观察到的并发写入**。优先私密目标；元数据与历史仍存在。 |
+
+### 预览、确认与合并
+
+推送预览绑定本机内存／磁盘版本、目标／选择项及**整个远端索引版本**。本地编辑、目标变化或新远端写入会使旧确认失效；应刷新重做预览，不应强行提交。
+拉取／一键同步在宿主下载、验证与解密，按条目 ID 与加密共同祖先进行三方比较，再显示遮罩的变更／冲突摘要。
+选择本机／远端或界面提供的安全合并结果；不会用文本拼接猜测密码、私钥或数组。未确认项保持本机，且不推进基准。远端删除提议需要人工审阅。
+本机应用前创建安全副本；远端历史与本机回滚是不同功能。选择旧快照或删除快照前先检查远端列表／历史。
+
+### 自动同步与真实限制
+
+- 默认关闭，逐通道配置周期、本地写入去抖、远端检查、启动频率、冲突策略与自动应用档位。
+- 启动／远端轮询只下行，不因启动而取得新的上传授权；首次缺少基准需要人工确认。
+- 低风险档不会自动应用密码库变更；“本机优先”是明确选择的冲突策略，不是关闭冲突检测。
+- 锁库、只读、换库／换目标和卸载会撤销在途能力及预览。超时结果不确定时先检查状态，再决定是否重试。
+- Git push 拒绝和 WebDAV／AWS 条件请求在受支持时保护并发；Gist、OSS、无 ETag 服务仍有读取后的竞态，**不等于分布式锁**。
+- 默认保留最近快照（10 个），清理失败单独报告。**删除 Git／Gist 文件不会擦除历史密文**，对象版本也可能保留旧副本。
+
+技术细节：[通道契约](<docs/cloud-sync-transports.md>)、[同步实现说明](<docs/cloud-sync.md>)、[UI 复用说明](<docs/cloud-sync-ui-adoption.md>)。历史验证记录不等于针对你当前安装的实时账号测试。
+
+## 本地与旧版备份
+
+从首页或命令面板打开**本地备份**，创建加密副本、核对时间与所属库，再选择恢复**合并**（默认，把条目复制进当前库）或**替换**（覆盖整库，先保留安全副本）。覆盖与合并不同，确认前检查当前库与重复项。
+本地备份是原始本地加密库文件的副本，需要对应主密码；它与独立同步密码加密的云端条目快照不同。
+**旧版云备份（仅迁移）**折叠区保留旧单向 GitHub Contents／S3／OSS／R2 上传器。它不是双向同步，不建立新合并基准，也不会自动授权四通道的新目标。
+[旧版云备份文档](<docs/cloud-backup.md>)仅适用于该迁移路径。
+
+## 访问权限与安全
+
+### 访问模式不等于工具档位
+
+| 模式 | 含义 |
+|---|---|
+| ask（默认） | 普通模型读取无需确认；新增／更新／删除等受保护写入走 DSH 审批。**不是每次读取密码都询问**。 |
+| readonly | 仍可读取／搜索／生成验证码；工具与 GUI 的受保护修改被拒绝。**不是仅元数据模式，也不是 OS 沙箱**。 |
+| auto | 普通读取／写入没有逐次写入审批；只对可信工作流启用。 |
+
+对**高敏感度**条目按 ID 读取 get／剪贴板／TOTP／历史密码／附件等内容，在 ask 与 auto 下有确认门槛；这不是覆盖全部批量／导出／CLI 路径的通用闸门。仍应坚持最小字段与窄工具档位。
+GUI 按钮是用户直接操作，执行自己的确认／只读规则，不一定走模型审批提示。拥有库文件和密钥的 CLI 是独立进程，不受模型工具白名单隔离。
+自动捕获默认关闭；启用后只是指导助手对主动分享的凭据提出保存建议，不授权搜集无关秘密或违背用户意愿自动保存。
+
+### 加密与隐私
+
+- 使用 Node 内置 crypto 的 scrypt 与认证 AES-256-GCM；随机 nonce 与验证信封检测错误密码／篡改，串行／原子写入与锁保护常规并发。
+- 静态加密不代表所有元数据／配置都加密。库文件名、权限／工具档文件、恢复码哈希和云快照元数据可能可见。会被搜索或显示的标题／标签／备注／自定义元数据应避免藏秘密。
+- 模型摘要投影省略标准密码／私钥／令牌／TOTP 字段和自定义字段值，GUI 仍支持自定义数据。用户可能误把秘密写进标题、URL 或其他元数据，所以摘要也可能敏感，不应无谓引用。
+- 密码强度与 Watchtower 风险标签是启发式提醒，不是安全保证。三颗星指示条目密码／PIN 强度，不给机器生成 API Key 或私钥评分。
+- 在线泄漏检查把 **SHA-1 的前五个十六进制字符**发送到 api.pwnedpasswords.com，并附 Add-Padding；匹配在本机完成。不会上传完整哈希、密码或条目，但服务端仍能看到 IP 与前缀。Padding 只降低响应大小信号，不隐藏前缀。离线检查不联网，但常见密码表更小。
+- 复制、下载、会话导出与消费程序内存都是明文暴露点。剪贴板功能无法让系统剪贴板历史软件变安全。
+
+### 边界与恢复
+
+插件与 DSH 同进程，不隔离其他可信插件、同 OS 用户工具、被攻陷的主机、截图、日志或已经接收秘密的模型。使用最小权限、可信插件、OS 权限、独立账号／设备和谨慎的提示流程。
+“恢复码”只存哈希、验证**持有**，**不能导出解密密钥、打开忘记主密码的库或重置主密码**。独立保管主密码和已经验证可恢复的加密备份。
+OS 钥匙串／helper-command 托管见[主密钥托管设计草案](<docs/master-key-custody.md>)；它**不是当前 CLI 已实现的自动解锁功能**。
+
+## 命令行
+
+### 消费程序只读所需字段
+
+以下假设 dsh-vault 已安装；源码目录中替换为 node lib/cli.js。
+
+~~~sh
+dsh-vault --version
+dsh-vault list --json
+dsh-vault show demo-server
+dsh-vault get demo-server --field host
+dsh-vault get demo-server --field username
+dsh-vault get demo-server --field port
+dsh-vault get demo-api --mask
+dsh-vault totp demo-api --json
+dsh-vault verify
+~~~
+
+| 命令 | 输出与注意点 |
+|---|---|
+| list、show | 投影后的身份／元数据与存在性，省略标准秘密、备注／自定义字段；用户填写的元数据本身仍可能敏感 |
+| get <id/title/env-name> | 默认输出主秘密；--field 指定单个字段，也支持 fields.name；名称歧义时报错 |
+| get ... --json | 包装所选值，**不会自动脱敏** |
+| get ... --all | 返回含秘密的完整 JSON；日常自动化避免使用 |
+| totp <entry> | 当前验证码；--json 加入位数、周期、剩余秒数；验证码本身敏感 |
+| verify | 检查主密码；状态写 stderr，不向 stdout 输出凭据 |
+| env | 仅 env 标签条目；--keys-only／--mask／--explain 用于核对范围 |
+| export-env <path> | 写明文 env 文件（支持时为 0600），不是加密备份 |
+
+成功数据走 stdout，诊断走 stderr。退出码：0 成功、1 运行／查找／解密失败、2 参数错误。
+不要开启 shell trace、打印命令替换结果或把秘密 stdout 收进公开会话。消费程序应取出即用，不记录它，也不把它放入进程参数或 URL。
+--mask 是遮罩预览，不保证零披露：部分值保留前缀，自定义／元数据可能不遮罩；同时给 --all 仍打印完整条目。批量检查变量名用 env --keys-only。
+
+### 独立 CLI 的主密码来源
+
+CLI 顺序为 **--password-stdin → DSH_VAULT_MASTER_PASSWORD → DSH_VAULT_PASSWORD → 交互式隐藏输入**。没有 TTY 且没有显式来源时失败；不读插件配置、不复用 GUI 运行时密钥、不自动访问 OS 钥匙串托管。
+通过已授权的秘密提供器／输入路径交付，不要把真实主密码写成 shell 历史、截图、聊天或已提交脚本里的字面量。环境值会被子进程继承，也可能被同用户工具查看；stdin 也不代表进程隔离。
+--vault 选择命名库，--path 选择指定库文件；DSH_HOME 决定默认主目录，下接 vault/default.json。选择文件不是读取其他用户库的授权。
+
+## 环境变量导出
+
+**单个值：** get demo-api 不要求 env 标签。**批量 shell 环境：** env 故意只导出 env 标签条目，避免把无关卡片、备注和登录信息带入 shell。
+消费程序要求精确变量名时，在编辑器填写 envKeys，例如 DEMO_API_KEY；envKey 是旧的单名简写。变量名按导出字段顺序对应，必须是有效标识符、最多八个且不重复。未指定者按标题与标准后缀生成（API_KEY、ACCESS_TOKEN、REFRESH_TOKEN、PRIVATE_KEY、PASSWORD）。
+list 显示名字不等于已经导出值：它会区分有标签／会导出和无标签／不导出两组。
+
+~~~sh
+dsh-vault env --keys-only
+dsh-vault env --mask
+dsh-vault env --explain
+dsh-vault env --file ./demo.env
+dsh-vault export-env ./demo.env
+~~~
+
+最后两条会写**明文**，请排除版本控制、限制权限、使用后删除。文件输出可覆盖目标，应有意选择路径；不要直接 source 不可信导入的 env 文件。
+对已核对的 POSIX shell 导出，保留 CLI 的引号：
+
+~~~sh
+# 先只查看名字与计划导出的条目，不显示值。
+dsh-vault env --keys-only
+# 仅在已授权的 shell 中使用，绝不记录展开的输出。
+set -a
+eval "$(dsh-vault env)"
+set +a
+~~~
+
+**不要**用 export $(dsh-vault env)，单词拆分会破坏空格／引号。这是 POSIX shell 语法，不是 PowerShell。能只读一个字段时，优先避免广泛的环境变量暴露。
+
+## 工具档位
+
+在 1pass 的**设置 → 模型工具**切换；运行时即时更新注册，保存在库目录的 tools.json。模型工具目录属于当前进程，**不是每个命名库独立的一份目录**。
+
+| 档位 | 注册数量 |
+|---|---|
+| 基础 Basic（默认） | 核心 **11** |
+| 标准 Standard | 核心 + 管理，共 **64** |
+| 完整 Full | 五组全部，共 **113** |
+| 自定义 Custom | 核心 **11**，加所选管理 **53**／导入导出 **27**／会话 **8**／文件 **14** |
+
+工具可见不等于操作获准。ask／readonly／auto、锁库、目标授权与破坏性确认仍然有效。GUI-only 快速导入和云同步控制器不会把整段批量密码作为模型工具参数暴露。
 
 ## 工具
 
-共 113 个工具,分五组。**基础**是默认安装就会注册的;其余通过[工具分级](#工具分级工具集)按需开启（设置 → 凭据库 → 权限 → 模型工具集）。
+当前源码注册的 **113** 个工具均列在下方，即使当前档位仅暴露其中一部分。分组依照 CORE_TOOLS／IO_TOOLS／SESSION_TOOLS／FILE_TOOLS，其余为管理组。导入导出／会话结果可能包含明文秘密，执行前核对字段与目标。
 
-### 基础（默认注册） — 11
-
-共 11 个工具。下面各组都需按需开启。
+### 核心／基础档 — 11
 
 | 工具 | 说明 |
 |---|---|
 | `vault_list` | 列出保险库目录下可用的保险库（一个 .json 一个,排除 access/meta/导出等旁车文件） |
-| `vault_search` | 跨标题/分类/用户名/邮箱/手机/主机/端口/URL/备注/标签/自定义字段（含数字/布尔/嵌套值；空格分隔多词 OR 命中）检索；可选 `createdAfter`/`createdBefore` 毫秒时间戳过滤；返回无密摘要；`limit` 须为 1–100 的整数 |
-| `vault_get` | 按 id 读取完整条目（含全部密钥） |
+| `vault_search` | 搜索身份、元数据、标签和自定义值，可按类型、时间、收藏筛选；返回摘要，不返回密码、密钥或令牌值。 |
+| `vault_get` | 按 ID 读取条目；指定最小字段或遮罩。完整读取可能返回全部秘密。 |
 | `vault_add` | 新增条目（上述字段任意组合；空字符串/空数组字段会被忽略） |
 | `vault_update` | 按 id 更新字段（未提供的字段保留；空字符串清除该字段；`title` 可改名；`rotationDays: 0` 清除轮换 = 永不轮换） |
 | `vault_delete` | 软删除条目（移入回收站，磁盘上仍加密保留） |
-| `vault_fill` | 按 host/URL/用户名/标题匹配条目并返回其凭据 |
-| `vault_clipboard` | 取出某条目某个字段的值用于直接复制（用户名/密码/apiKey 等） |
-| `vault_totp` | 为存储的 otpSecret（或直接传入的 Base32/otpauth URI）生成当前 6 位动态验证码 |
+| `vault_fill` | 匹配目标并直接返回指定凭据，可能含秘密；没有相同的选定 ID 高敏读取闸门，不得用于绕过审批或作为 /1pass 回退。 |
+| `vault_clipboard` | 返回单个字段供剪贴板交接；不等于已安全粘贴或已擦除系统剪贴板。 |
+| `vault_totp` | 从库内或给定的 Base32／设置链接生成 TOTP；注意验证码有效期与链接参数。 |
 | `vault_generate_password` | 生成强随机密码（长度/字符集/分组可选）**或易记口令短语**（`passphrase: true`，EFF 词表，`words`/`separator`/`wordDigits`） |
 | `vault_strength` | 零依赖密码强度评估（0–100 分，weak/fair/strong/very strong） |
 
-### 管理（标准档及以上） — 53
-
-收藏、标签、活动历史、健康检查、模板、附件,以及卡与 2FA 的细节。
+### 管理／标准档及完整档 — 53
 
 | 工具 | 说明 |
 |---|---|
 | `vault_compare` | 逐字段比较两个条目（`onlyA`/`onlyB`/`differ`/`equal`）——只返回字段名，绝不返回密钥值 |
 | `vault_rename` | 一次调用即可重命名条目（`vault_update` 的快捷方式） |
-| `vault_restore` / `vault_purge` / `vault_restore_recent` | 从回收站恢复 / 永久删除 / 撤销最近一次删除 |
-| `vault_lock` / `vault_unlock` | 显式锁定保险库（清空内存密钥）/ 重新解锁 |
+| `vault_restore` | 从回收站恢复一个软删除条目。 |
+| `vault_purge` | 从当前库永久清除一个回收站条目；独立备份或历史仍可能保留副本。 |
+| `vault_restore_recent` | 撤销最近一次软删除。 |
+| `vault_lock` | 锁定当前库并清除内存中的解密密钥。 |
+| `vault_unlock` | 用宿主配置的解锁材料重新打开库；不要让模型接收主密码。 |
 | `vault_password_history` | 列出条目的历史密码(1Password/Bitwarden 风格,最新在前,上限 10 条;不含当前密码) |
 | `vault_password_rollback` | 将条目密码回滚到某条历史记录(当前密码先归档,可逆) |
 | `vault_apply_tags` | 按查询批量增/删/替换条目标签（支持 dry-run，不含密钥） |
@@ -83,7 +409,10 @@ dsh-vault 是一个面向 DeepSeek Harness 的安全加密插件：把你在使�
 | `vault_breach_check` | Watchtower 风格泄露扫描：对接 Have I Been Pwned（k-anonymity,仅发送 SHA-1 前缀）,附离线常见密码兜底 |
 | `vault_integrity` | 校验磁盘上的保险库文件可正确解密并与内存中的 store 一致 |
 | `vault_merge` | 合并一个条目到另一个；`keepSource: true` 保留源条目 |
-| `vault_attach` / `vault_attachments` / `vault_attachment` / `vault_detach` | 给条目附加文件（私钥、证书、配置、恢复码）——base64 存于加密条目内随库加密;列出/读取/移除 |
+| `vault_attach` | 将文件作为条目内容加密保存。 |
+| `vault_attachments` | 列出附件名称与大小，不读内容。 |
+| `vault_attachment` | 读取一个附件；内容可能敏感。 |
+| `vault_detach` | 移除条目的一个附件。 |
 | `vault_quick_add` | 快速录入（标题 + 一个密钥），支持 tags/notes |
 | `vault_expiry` | 设置/清除过期（`expiresAt: 0` 移除） |
 | `vault_stats` | 概览计数，含 `trashCount`（不含密钥） |
@@ -91,13 +420,13 @@ dsh-vault 是一个面向 DeepSeek Harness 的安全加密插件：把你在使�
 | `vault_duplicates` | 查找重复分组：`mode` = `both`（默认）/ `title` / `content`（不含密钥） |
 | `vault_report` | 可打印清单，含到期/轮换列与统计页脚（不含密钥） |
 | `vault_match_url` | 按 URL 查找匹配的登录条目（Bitwarden/1Password 风格:精确主机、子域、父域、路径前缀;www./端口归一化）,带 0–100 评分——绝不返回密码 |
-| `vault_env` | 把标记 env 的条目（tags 含 `env`）渲染为 `KEY=VALUE` 行 —— 见[环境变量导出](#环境变量导出) |
+| `vault_env` | 把带 env 标签的条目生成带 shell 引号的 KEY=VALUE；除非指定遮罩，否则是明文。 |
 | `vault_copy` | 复制条目（含密钥）到另一个命名保险库 |
 | `vault_templates` | 内建 + 用户自定义模板（save/list/remove,KeePassXC 风格）;内建模板新增 Wi-Fi、服务器、数据库、身份、银行账户、银行卡（借鉴 1Password） |
 | `vault_notes` | 追加或整体替换条目的自由备注（等价于一次 `vault_update`） |
 | `vault_changes` | 列出某个时间窗内（默认 24 小时）的库内活动:新增/更新/软删除,最新在前 |
 | `vault_find` | 模糊查找:忽略大小写、标点与空白,所以 `gh` 也能命中 `GitHub` |
-| `vault_mask` | 把任意文本里像凭据的部分打码（API key、token、密码、私钥),便于安全地记录或引用 |
+| `vault_mask` | 启发式遮罩文本中疑似秘密；不能证明已发现全部敏感信息。 |
 | `vault_history` | 本进程内的近期活动,最新在前:写操作（增/改/删/恢复/清空/合并/回滚)与读操作（读取、验证码） |
 | `vault_recent` | 列出最近新增或更新的条目（最新在前),只含非敏感摘要 |
 | `vault_pin` | 收藏（置顶）条目,使其在搜索与列表中排在最前 |
@@ -106,7 +435,7 @@ dsh-vault 是一个面向 DeepSeek Harness 的安全加密插件：把你在使�
 | `vault_generate_username` | 生成随机用户名或匿名邮箱建议 |
 | `vault_rotate_password` | 生成新的强密码、写入条目,并把新值返回给调用方交给目标服务 |
 | `vault_touch` | 把条目标记为"最近使用"（只更新 updatedAt,不改内容） |
-| `vault_note_secret` | 用一个自动生成的标题存一条单独的密钥（临时记一条,不必先想标题）|
+| `vault_note_secret` | 用一个自动生成的标题存一条单独的密钥（临时记一条,不必先想标题） |
 | `vault_search_advanced` | 多条件组合搜索:标题子串、用户名/邮箱子串、kind、标签、创建时间区间、仅收藏 |
 | `vault_count` | 返回活跃条目数量（可按 kind / 标签过滤） |
 | `vault_set_icon` | 设置条目的 UI 图标（emoji）与强调色 |
@@ -117,24 +446,26 @@ dsh-vault 是一个面向 DeepSeek Harness 的安全加密插件：把你在使�
 | `vault_undelete_all` | 把回收站里的条目全部恢复 |
 | `vault_get_many` | 按 id 批量读取多个条目,且只返回请求的字段 |
 
-### 导入导出（完整档,或自定义 → 导入导出） — 27
-
-与其它密码管理器之间的进出、批量操作,以及 env/CSV/1Password/Bitwarden/KeePass/pass 互转。
+### 导入与导出／完整档或自定义 — 27
 
 | 工具 | 说明 |
 |---|---|
 | `vault_import_csv` | 从 CSV 批量导入凭据（自定义列变为 fields；`overwrite: true` 合并字段到已有条目，不再产生重复） |
 | `vault_bulk_delete` | 按 query/kind/tag 或显式 ids 批量软删除条目;需 `confirm: true`（默认仅试运行）;回收站可恢复 |
-| `vault_export` / `vault_import` | 整库加密备份/迁移（独立导出密码） |
-| `vault_export_bitwarden` / `vault_import_bitwarden` | Bitwarden/Vaultwarden JSON 互通（完整字段映射,支持覆盖） |
+| `vault_export` | 整库加密备份/迁移（独立导出密码） |
+| `vault_import` | 整库加密备份/迁移（独立导出密码） |
+| `vault_export_bitwarden` | Bitwarden/Vaultwarden JSON 互通（完整字段映射,支持覆盖） |
+| `vault_import_bitwarden` | Bitwarden/Vaultwarden JSON 互通（完整字段映射,支持覆盖） |
 | `vault_import_bitwarden_encrypted` | 解密 Bitwarden 口令保护 JSON 导出（PBKDF2/Argon2id + HKDF → AES-256-CBC + HMAC）并导入,需提供导出口令 |
 | `vault_import_manager_csv` | 密码管理器 CSV 自动识别表头：Bitwarden（login_uri/login_username/…）、1Password 8、Dashlane、NordPass、Keeper、LastPass（fav/grouping/extra）；支持 dryRun 预览 |
 | `vault_import_kdbx` | KeePass KDBX：3.1 与 4.x、AES-KDF 或 Argon2（RFC 9106）、AES-256-CBC 或 ChaCha20 载荷、支持 keyfile |
 | `vault_export_1password` | 导出为 1Password 1PUX 归档（ZIP + export.data）,可导入 1Password 或用 vault_import_1password 再导入;条目类别映射 login/信用卡/API 凭据/服务器 |
-| `vault_import_1password` / `vault_import_1pif` | 1Password 1PUX（ZIP）与旧版 1PIF 文本导出 |
+| `vault_import_1password` | 1Password 1PUX（ZIP）与旧版 1PIF 文本导出 |
+| `vault_import_1pif` | 1Password 1PUX（ZIP）与旧版 1PIF 文本导出 |
 | `vault_import_enpass` | Enpass JSON 导出（文件夹→标签、类型化字段、TOTP） |
 | `vault_import_keepass_xml` | KeePass 2.x XML 导出（明文或 ****** 掩码值） |
-| `vault_import_chrome` / `vault_import_keychain` | 从 Chrome Login Data（macOS 钥匙串 / Linux 钥匙环或 peanuts / Windows DPAPI）或 macOS 钥匙串导入密码（默认只读互联网密码 `inet`——真正用于网站登录的条目,`classes: ["genp"]` 可改读通用密码；会话缓存 + 预览,避免授权弹窗轰炸）；所有文件导入均支持 dryRun 预览 |
+| `vault_import_chrome` | 从 Chrome Login Data（macOS 钥匙串 / Linux 钥匙环或 peanuts / Windows DPAPI）或 macOS 钥匙串导入密码（默认只读互联网密码 `inet`——真正用于网站登录的条目,`classes: ["genp"]` 可改读通用密码；会话缓存 + 预览,避免授权弹窗轰炸）；所有文件导入均支持 dryRun 预览 |
+| `vault_import_keychain` | 从 Chrome Login Data（macOS 钥匙串 / Linux 钥匙环或 peanuts / Windows DPAPI）或 macOS 钥匙串导入密码（默认只读互联网密码 `inet`——真正用于网站登录的条目,`classes: ["genp"]` 可改读通用密码；会话缓存 + 预览,避免授权弹窗轰炸）；所有文件导入均支持 dryRun 预览 |
 | `vault_import_firefox` | Firefox 配置导入（logins.json + key4.db,NSS 3DES / PBES2-AES,支持主密码） |
 | `vault_export_totp` | 列出所有带 TOTP 密钥的条目及其标题与签发方标签 |
 | `vault_bulk_export` | 把**全部**条目（含密钥）导出为 JSON 文件,用于审计或迁移 |
@@ -147,14 +478,12 @@ dsh-vault 是一个面向 DeepSeek Harness 的安全加密插件：把你在使�
 | `vault_export_env` | 把带 `env` 标签的条目写成 .env 文件（KEY=VALUE,值做 shell 引号处理） |
 | `vault_export_csv` | 把条目导出为 CSV（与 `vault_import_csv` 同格式),可按 kind 过滤 |
 
-### 浏览器会话（完整档,或自定义 → 浏览器会话） — 8
-
-捕获与复用 cookie 会话;需要可选的 `playwright-core`。
+### 浏览器会话／完整档或自定义 — 8
 
 | 工具 | 说明 |
 |---|---|
 | `vault_session_open` | 在真实浏览器窗口中打开指定网址,供用户手动登录（密码、二次验证、验证码）——对禁止嵌入的网站也能捕获登录态（需要可选的 `playwright-core`） |
-| `vault_session_collect` | 收集已打开浏览器会话的全部 cookie（含 HttpOnly）,保存为 `cookie` 条目 |
+| `vault_session_collect` | 从插件打开的登录窗口收集 cookie 并存为 cookie 条目；需先由用户完成登录。 |
 | `vault_session_import` | 从粘贴的 JSON cookie 数组（开发者工具导出格式）或原始 `Cookie` 头字符串保存会话 cookie——无需浏览器的替代方案 |
 | `vault_session_import_file` | 导入 Netscape cookie-jar 文件（curl `-b` / wget / 浏览器扩展导出；与 `vault_session_export` 输出的格式一致） |
 | `vault_session_list` | 列出已保存的登录会话、cookie 数量、已过期与 7 天内过期数量（不含值） |
@@ -162,509 +491,99 @@ dsh-vault 是一个面向 DeepSeek Harness 的安全加密插件：把你在使�
 | `vault_session_close` | 关闭已打开的浏览器登录会话（已收集的 cookie 仍保留在保险库中） |
 | `vault_session_prune` | 移除已保存会话中的过期 cookie（无过期的会话 cookie 保留）;`preview: true` 只报告不修改 |
 
-### 备份与保险库文件（完整档,或自定义 → 备份与文件） — 14
-
-备份、切换保险库、换密钥、恢复码与系统搜索。
+### 备份与库文件／完整档或自定义 — 14
 
 | 工具 | 说明 |
 |---|---|
-| `vault_recovery_code` / `vault_verify_recovery` / `vault_recovery_status` | 一次性保险库恢复码（1Password/Bitwarden 风格）:32 位代码仅显示一次,只保存其 SHA-256 哈希;可验证代码持有;查询是否已设置 |
+| `vault_recovery_code` | 显示一次新代码，仅持久化 SHA-256 哈希；重新生成使旧码失效。它不是解密密钥，也不能重置主密码。 |
+| `vault_verify_recovery` | 与已存哈希核对代码持有；不会解密或解锁密码库。 |
+| `vault_recovery_status` | 报告是否设置恢复码及签发时间，不返回代码。 |
 | `vault_rekey` | 原地升级 scrypt KDF 参数并重加密 |
 | `vault_switch` | 为当前会话切换活动保险库 |
-| `vault_backup` / `vault_backup_now` | 时间戳加密备份,文件名 `<库名>-backups-YYYY-MM-DD_HH-MM-SS-<hex>.json`（库名+日期一目了然）;自动保留最近 N 份 |
+| `vault_backup` | 创建原始加密库文件的本地备份，按保留数清理（默认 10）。 |
+| `vault_backup_now` | 立即创建一个本地加密备份。 |
 | `vault_restore_backup` | 从备份还原:`mode: "merge"`（默认）把备份条目复制进当前库,出现在条目列表;`mode: "replace"` 整体覆盖（先写安全快照） |
-| `vault_vault_rename` / `vault_vault_delete` | 重命名命名库（文件移动,当前会话跟随）或永久删除（default 库受保护） |
+| `vault_vault_rename` | 重命名命名库；当前活动库随移动更新。 |
+| `vault_vault_delete` | 永久删除一个命名库文件；default 库受保护。 |
 | `vault_search_system` | 在 Chrome / 钥匙串中搜索站点与用户名——绝不暴露密码 |
 | `vault_backup_status` | 报告距上次备份已过去多少天（1Password 式备份提醒） |
 | `vault_search_history` | 搜索时包含已软删除（回收站）的条目,并标注其删除状态 |
-| `vault_backups` | 列出可用的加密备份文件（最新在前）及其绝对路径与时间戳 |
-
-**典型用法**:把 SSH 凭据存成 `kind: ssh`(host/port/username/password 或 privateKey),让模型先 `vault_search` 找到主机、再 `vault_get` 取连接信息;`api-key`/`oauth` 条目用于 API 网关的 access/refresh token 轮换。
-
-## 自动云备份（当前分支新增）
-
-设置 → 凭据库 → 备份现可配置 GitHub 私有仓库、S3、阿里云 OSS、Cloudflare R2。支持写入后与间隔自动上传加密快照、多目标、状态与手动重试、远端保留策略。默认关闭，访问凭证仅通过环境变量名引用；不是多设备同步服务。Git 历史与对象存储历史版本可能保留旧数据。设置、权限、限制与恢复步骤见 [云备份指南](docs/cloud-backup.md)。
-
-## 安装
-
-dsh-vault 是一个 **bundle**(声明 `dsh.bundle` 的包):安装到 profile 后,它的 `cordis.patch.yml` 会自动插入 `vault` 插件行(按包名 `dsh-vault` 引用,主密码经 `DSH_VAULT_PASSWORD` 环境变量注入)。包内含自包含构建脚本,git 安装时会自动编译 `lib/`。
-
-以下四种安装方式均已**端到端实测通过**(安装 → bundle 层被识别 → 插件激活且 7 个 `vault_*` 工具全部注册 → `vault_add`/`vault_get` 真实往返成功 → 卸载移除 layer):
-
-| 方式 | 命令 | 需构建 | 需 allowBuilds |
-|---|---|---|---|
-| npm | `add dsh-vault` | 否(预构建 lib) | 否 |
-| GitHub | `add github:Ox0400/dsh-vault#v0.1.1` | 是(prepare) | 是(首次) |
-| 本地路径 | `add /绝对/路径/to/dsh-vault` | 否(链接已构建源码) | 否 |
-| tarball | `add ./dsh-vault-0.1.1.tgz` | 否(预构建 lib) | 否 |
-
-### 方式一：从 npm 安装(最省事)
-
-```sh
-dsh plugin --profile web add dsh-vault
-```
-
-npm 包自带**预构建的 `lib/` 产物**,无需 allowBuilds、无需本地编译,安装即用。启动前设置主密码:
-
-```sh
-export DSH_VAULT_PASSWORD='你的强主密码'
-```
-
-### 方式二：从 GitHub 安装(锁 tag 或 commit)
-
-```sh
-dsh plugin --profile web add github:Ox0400/dsh-vault#v0.1.1
-```
-
-git 安装拉取的是**源码**,`prepare` 脚本会在安装时构建 `lib/`。pnpm ≥10 默认阻止 git 依赖执行构建脚本。实测流程:
-
-1. 执行 `add` 命令——会因 `allowBuilds` 失败,并打印需要放行的**精确键**(含仓库 URL 与解析后的 commit hash 的那行):
-
-   ```text
-   allowBuilds:
-     dsh-vault@https://codeload.github.com/Ox0400/dsh-vault/tar.gz/<sha>: true
-   ```
-
-2. 把该精确键追加到 profile 的 `pnpm-workspace.yaml`(`$DSH_HOME/profiles/<name>/pnpm-workspace.yaml`):
-
-   ```yaml
-   packages:
-     - .
-   allowBuilds:
-     dsh-vault@https://codeload.github.com/Ox0400/dsh-vault/tar.gz/<sha>: true
-   ```
-
-3. 重新执行 `add`——pnpm 现在会运行 `prepare` 脚本,构建 `lib/` 并完成安装。
-
-建议**锁定 tag/commit** 再安装,避免上游推送改变安装时执行的代码。允许构建 = 允许该包的代码在你的机器上于安装时执行;只对你信任的源码授予。
-
-### 方式三：本地路径安装到 profile
-
-```sh
-dsh plugin --profile web add /绝对/路径/to/dsh-vault
-```
-
-pnpm 将 checkout 链接进 profile;只要 `lib/` 存在(必要时先在 checkout 里执行 `pnpm build`)即被识别为 bundle。
-
-### 方式四：本地 tarball 安装
-
-```sh
-npm pack && dsh plugin --profile web add ./dsh-vault-0.1.1.tgz
-```
-
-tarball 自带预构建 `lib/` 产物,无需构建或 allowBuilds。
-
-`dsh plugin --profile web remove dsh-vault` 卸载(同时移除依赖与 layer)。
-
-## 命令行
-
-插件把保险库交给助手;自带的 `dsh-vault` 命令把**同一个保险库**交给 shell 与脚本,于是技能里的子进程可以自己取密钥,**明文永远不进模型上下文**。
-
-### 0. 先确认:你能敲的是哪条命令?
-
-**没安装就没有 `dsh-vault` 这个可执行文件** —— 插件是 Cordis bundle,`dsh` 也没有插件子命令注册表(启动器只解析自己的参数;`dsh plugin …` 只是转发给 pnpm,所以 `dsh web exec …` 会把参数交给 web app,报 `error: too many arguments`)。看下面的例子前,先找到你那一行:
-
-| 你的情况 | 能敲的命令 |
-|---|---|
-| **源码 checkout**(`git clone` + `pnpm build`) | **`pnpm vault`** —— 或 `node lib/cli.js`、`./lib/cli.js` |
-| 插件**装进了 profile** | `pnpm dsh plugin --profile web exec dsh-vault` |
-| **全局安装**(`npm i -g dsh-vault`) | `dsh-vault` |
-| **什么都没装** | `npx dsh-vault` |
-
-```sh
-# 源码 checkout(就是本仓库当前的状态):
-pnpm vault list
-
-# 全局安装后(npx 同理)才是:
-dsh-vault list
-npx dsh-vault list
-```
-
-下面的例子统一写成 `dsh-vault …`,**请替换成你那一行的写法**(checkout 用 `pnpm vault …`)。
-
-### 1. `env` 是干什么的
-
-`get` 取**一个**值,不需要任何标签。`dsh-vault env` 是另一种场景:脚本要**一次拿好几个**密钥。它把**打了 `env` 标签**的条目打印成 shell 赋值语句,让脚本自己取走:
-
-```
-$ dsh-vault env
-DEMO_API_KEY='sk-demo-123'
-OTHER_PASSWORD='pw-not-exported'
-```
-
-`eval "$(dsh-vault env)"` 就是把这些赋值读进**当前 shell** —— 这通常才是你要用它的原因:
-
-```sh
-eval "$(dsh-vault env)"          # KEY=VALUE 变成 shell 变量
-echo "$DEMO_API_KEY"
-```
-
-两个前提要知道:
-
-- **只有打了 `env` 标签的条目才会被导出。** 一个都没打时,输出的是
-  `dsh-vault: nothing to export — no entry carries the "env" tag.`;先在 UI 里给条目的标签加上 `env`,或让助手执行 `vault_update { id, tags: ["env"] }`。
-- 名字默认由标题 + 字段推导(`DASHSCOPE` + `apiKey` → `DASHSCOPE_API_KEY`);想固定名字就在条目的 `envKeys` 里指定 —— 见[环境变量导出](#环境变量导出)。
-
-
-**命名 —— 只有三个,其中两个故意都叫 `env`:**
-
-| 名字 | 是什么 | 含义 |
-|---|---|---|
-| `env` | 条目的**标签** | 决定哪些条目会被 `dsh-vault env` 导出;不打标签就不导出 |
-| `env` | **命令** | 打印带该标签的条目 |
-| `envKeys` | 条目的**字段**(可选) | 固定确切名字,例如 `["DASHSCOPE_API_KEY"]`;旧的单数写法 `envKey` 仍作为"只写一个"的简写接受 |
-
-除此之外没有任何叫 `env*` 的东西:`list --json` / `show` 只报 `envKeys`(该条目会导出的名字,也就是 `get` 接受的名字)、`envTagged`(是否被 `env` 包含)与 `hasTotp`(`totp` 能否为它生成动态码)。
-
-### 2. 有哪些命令
-
-```sh
-dsh-vault list                             # 分组显示:哪些会被 env 导出、哪些不会
-#   Exported by `env` (tag "env") — 1 entry:
-#     a1b2c3d4-…  api-key   DASHSCOPE        → DASHSCOPE_API_KEY
-#   Not exported (no "env" tag) — 1 entry; `get <name>` still works for it:
-#     9f8e7d6c-…  api-key   Example Billing  → EXAMPLE_BILLING_API_KEY
-dsh-vault get my-entry                     # 取该条目的主密钥,仅 stdout
-dsh-vault get my-entry --field apiKey      # 取指定字段
-dsh-vault get my-entry --mask              # 只确认存在,不打印值
-dsh-vault show my-entry                    # 非敏感字段的 JSON
-dsh-vault totp my-entry                    # 当前的 TOTP 动态码(只有 6 位数字)
-dsh-vault totp my-entry --json             # 附带 digits / period / secondsRemaining
-dsh-vault env                              # 带 env 标签的条目 → KEY=VALUE
-dsh-vault env --mask                       # 人类视角,两段都是 KEY=VALUE:
-#   ## exported items
-#   NPM_REGISTRY_API_KEY=npm_***
-#   ## unexported items
-#   EXAMPLE_BILLING_API_KEY=***
-dsh-vault export-env .env                  # ……或写成 0600 权限的 .env 文件
-dsh-vault verify                           # 校验主密码,stdout 无输出
-```
-
-密钥只走 stdout,其余(进度、错误)走 stderr,所以 `$(dsh-vault get …)` 与管道都正常;退出码 `0` 成功、`1` 运行错误、`2` 用法错误。
-
-`totp` 是为了让脚本能自动完成两步验证、又完全不碰长期密钥:`code=$(dsh-vault totp my-entry)` 只输出六位数字。如果你用 `get my-entry --field otpSecret`,打印的是**密钥本身** —— 只有确实要把密钥导入别处时才那么做。`--json` 会多给一个 `secondsRemaining`,脚本据此等一个新窗口,而不是硬闯即将过期的码。
-
-### 3. shell 引号:不是 `export $(…)`
-
-正确的是 `eval "$(dsh-vault env)"`;`export $(dsh-vault env)` 是错的。命令替换会**按空白拆分**,而且**不会**去掉 CLI 输出的引号 —— 值里只要有一个空格就会被拆成多个词,所有值还会带上字面引号:
-
-```sh
-$ export $(dsh-vault env); echo "$WITH_SPACE"
-['pass]                     # 在空格处被拆断
-bash: export: `here': not a valid identifier
-$ eval "$(dsh-vault env)"; echo "$WITH_SPACE"
-[pass word here]            # 按原样读入
-```
-
-脚本里更推荐用文件形式,**完全不用 `eval`**:
-
-```sh
-dsh-vault export-env .env && set -a && . ./.env && set +a
-```
-
-### 4. 主密码
-
-依次取 `--password-stdin` → `$DSH_VAULT_MASTER_PASSWORD`(或 `$DSH_VAULT_PASSWORD`)→ 交互式提示(**输入不回显**,终端会切到 raw mode;`tests/e2e/cli-prompt.mjs` 会验证这一点);它**不会**去读插件配置文件里的密码,所以 CLI 既不依赖、也不会泄露 profile patch 里那份:
-
-```sh
-DSH_VAULT_MASTER_PASSWORD=… pnpm vault list
-printf '%s\n' "$PASSWORD" | pnpm vault list --password-stdin
-```
-
-### 5. 安装细节
-
-**源码 checkout:**
-
-```sh
-git clone git@github.com:Ox0400/dsh-vault.git && cd dsh-vault
-npm install && npm run build            # 生成 lib/,含可执行的 lib/cli.js
-
-pnpm vault list                         # 仓库自带入口(package.json script)
-node lib/cli.js list                    # 等价写法
-./lib/cli.js list                       # 文件本身可执行
-npm link                                # ……或把真正的 dsh-vault 放到 PATH
-```
-
-要**开发插件**并对接 profile,还需要把 checkout 软链进 profile 并加一层 patch 插入插件(本仓库平时就是这么开发的);**CLI 完全不需要这些** —— 它直接读保险库文件。手工软链的插件**没有** `.bin/dsh-vault` 垫片,`pnpm … exec` 会报 `Command "dsh-vault" not found`;要么按依赖正常安装(`pnpm dsh plugin --profile web add dsh-vault`),要么手动建垫片:
-
-```sh
-ln -sf ../dsh-vault/lib/cli.js ~/.dsh/profiles/web/node_modules/.bin/dsh-vault
-```
-
-**npm 安装:**
-
-```sh
-pnpm dsh plugin --profile web add dsh-vault          # 装进 profile(插件与 CLI 一起)
-pnpm dsh plugin --profile web exec dsh-vault list    # --profile 必填
-
-npm i -g dsh-vault && dsh-vault list                 # 全局
-npx dsh-vault list                                   # 或者干脆不装
-```
-
-读命令(`list`、`get`、`env`、`show`、`totp`、`verify`、`export-env`)只依赖 Node,所以全局与 `npx` 都能直接用;**只有写保险库**才需要 harness 运行时,而插件环境一定有。
-
-profile 这条路还有两个注意点:垫片可能被之后在该目录执行的 `pnpm install` 清掉;`pnpm dsh plugin --profile web add dsh-vault` 会依据包的 `dsh.bundle` 声明重整 `dsh.profile.bundles` —— 如果你自己的 patch 层**也**插入了这个插件,就会**挂两份**,要先删掉 patch 层那一行。
-
-## 泄露检查的隐私边界
-
-`vault_breach_check`(以及安全页)可以把密码拿去和 Have I Been Pwned 比对。**离开本机的只有一样东西**:
-
-```
-GET https://api.pwnedpasswords.com/range/<SHA-1(密码) 的前 5 个十六进制字符>
-Add-Padding: true
-```
-
-响应会返回该前缀桶里的**全部**后缀(几百条哈希),匹配在**本地**完成 —— 完整哈希、密码原文、以及它属于哪个条目都不会离开。如果密码已经在内置常见口令表里,**根本不会发起请求**;同一前缀的重复查询会在内存里缓存一小时。
-
-k-anonymity **没有**隐藏的东西,直说:
-
-- **5 个字符的前缀**(20 bit,约百万分之一桶)会连同你的 IP 发给 Cloudflare;
-- 能枚举候选口令的观察者,可以算出每个候选的前缀,从而看出你是否查询过那个桶 —— 这是该协议的已知局限,加请求头也解决不了;
-- `Add-Padding` 只是抹掉**响应体积**这个信号(不加它,桶的响应长度会和"该密码有多常见"相关)。
-
-如果连前缀都不想出去,就用 `online: false` —— 此时只查离线词表,覆盖率小得多,适合当筛子而不是定论。
-
-## 强度指示
-
-列表里每个条目在标题后有一个**三星**强度指示 —— **☆☆☆ = 0 分,★★★ = 满分**,中间按半星分档:
-
-![强度指示的七种状态](docs/strength-stars.svg)
-
-半星是**真正的左半实心、右半空心**,不是在旁边写个 `½`:实现是把同样三颗星叠两层、按百分比裁剪彩色层,而 `★`/`☆` 字宽一致,所以裁剪正好落在星的边界上。
-
-| 分数 | 实心星数 | 档位 |
-|---|---|---|
-| 0–8 | 0 | 弱 |
-| 9–24 | ½ | 弱 |
-| 25–41 | 1 | 弱 |
-| 42–58 | 1½ | 中 |
-| 59–74 | 2 | 中 |
-| 75–91 | 2½ | 强 |
-| 92–100 | 3 | 很强 |
-
-悬停可看到精确分数与评价。分数在 **host 侧**计算(列表本身永远拿不到密钥),针对条目的**密码或银行卡 PIN**;机器生成的 API Key、私钥**故意不评分**,免得所有密钥都是满分。
-
-## 环境变量导出
-
-打上 `env` 标签的条目可以用 `vault_env` / `vault_export_env` 导出为 `KEY=VALUE` 行，名字按各家工具链预期的字段名生成：
-
-| 条目 | 导出的键 |
-|---|---|
-| 标题 `DASHSCOPE` + `apiKey` | `DASHSCOPE_API_KEY` |
-| 标题 `DASHSCOPE` + `prefix: APP_` | `APP_DASHSCOPE_API_KEY` |
-| `envKey: "TAVILY_TOKEN"` + `accessToken` | `TAVILY_TOKEN` |
-| 同一条目的 `refreshToken` / `fields.scope` | `TAVILY_TOKEN_REFRESH_TOKEN` / `TAVILY_TOKEN_SCOPE` |
-
-- 字段后缀遵循惯例：`apiKey → API_KEY`、`accessToken → ACCESS_TOKEN`、`refreshToken → REFRESH_TOKEN`、`privateKey → PRIVATE_KEY`、`password → PASSWORD`、`cardNumber → CARD_NUMBER`。
-- 派生名字对不上脚本时，给条目设置**环境变量名**（可选字段 `envKeys`，也可用 `vault_add`/`vault_update` 写入，编辑器里用逗号分隔）：**按顺序一一对应**、且**原样使用**（不加前缀、不从标题推导）：
-
-  | `envKeys` | 导出结果 |
-  |---|---|
-  | `["DASHSCOPE_API_KEY"]` | `DASHSCOPE_API_KEY=apiKey` |
-  | `["GOOGLE_ACCESS_TOKEN", "GOOGLE_REFRESH_TOKEN"]` | 分别对应 `accessToken`、`refreshToken` |
-  | 条目有 3 个密钥、只配 `["MY_KEY"]` | `MY_KEY`、`MY_KEY_REFRESH_TOKEN`、`MY_KEY_SCOPE` |
-
-  每个名字必须是合法 POSIX 名（`[A-Za-z_][A-Za-z0-9_]*`）、最多 8 个、不可重复。`envKey`（单个字符串）仍作为"只配一个名字"的简写兼容，写入时会被合并进 `envKeys`。
-- 自定义字段同样会导出，形如 `<BASE>_<字段>`。
-
-> 升级提示：1.10.64 起键名从 `DASHSCOPE_APIKEY` 改为符合厂商惯例的 `DASHSCOPE_API_KEY`。若脚本依赖旧写法，给条目设置 `envKey` 固定名字即可。
-
-## 工具分级(工具集)
-
-插件内置 110+ 个模型工具,但**默认只注册 11 个基础工具**(`vault_list/search/get/add/update/delete/fill/clipboard/totp/generate_password/strength`),让模型的工具目录保持精简、减少 token 开销。
-
-在 **设置 → 凭据库 → 权限 → 模型工具集** 切换,**立即生效、无需重启**,并按保险库持久化:
-
-| 档位 | 注册内容 |
-|---|---|
-| **基础**(默认) | 仅核心 —— 日常增删改查/搜索/生成/验证码/填充 |
-| **标准** | + 管理: 收藏、标签、图标、到期轮换、健康、重复合并、附件、模板、env 掩码 |
-| **完整** | 全部,含批量导入导出、浏览器会话、备份与保险库文件操作 |
-| **自定义…** | 基础 + 任选: 管理 / 导入导出 / 浏览器会话 / 备份与文件 |
-
-也可在插件配置里写 `tools: basic|standard|full|custom`;界面选择优先,并保存在 `<vault 目录>/tools.json`(工具集是进程级设置,不随保险库变化)。
-
-## 密码管理(1pass) 设置页（v1.11.0）
-
-安装并启用插件后，打开 **设置 → 密码管理(1pass)**。界面采用 dsh-config-manager 的工作台结构与交互模式：四项主导航、窄屏更多菜单、命令搜索、全宽流程面板、宿主主题与紧凑控件。原密码簿、导入导出、TOTP、附件、云备份、审计和回收站保留。参考检查与许可说明见 [GUI 参考记录](docs/gui-reference.md) 与 [NOTICE](NOTICE)。
-
-没有环境变量时，插件不再启动失败。直接在设置页的掩码表单创建／解锁保险库，主密码只留在当前 DSH 进程内，不写入插件配置、浏览器存储或模型工具参数。重启 DSH 后需重新输入。原有 masterPasswordEnv 部署仍兼容。
-
-## 主密码与弱密码
-
-主密码和条目密码不按长度、字符组合或强度分数拦截，允许单字符、纯数字等弱密码。本机首次设置窗口仅检查主密码非空且两次输入一致；密码强度评分和安全页提醒只供参考，不阻止保存。加密算法保持不变，但弱主密码更容易被离线猜解。
+| `vault_backups` | 列出加密备份路径与时间，识别当前及旧版命名。 |
 
 ## 配置
 
-> [!WARNING] 安全:不要把主密码明文写进配置
-> profile patch(`cordis.patch.yml` / `cordis.yml`)是很容易被提交进 git、截图或进日志的配置文件 ——
-> 一行明文的 `masterPassword:` 就等于泄露了整个加密保险库的钥匙。请一律使用
-> `masterPasswordEnv` 并把真实密码放进进程/ shell 环境(例如 `export DSH_VAULT_PASSWORD='…'`)。
-> 凭据类插件的证据化检查清单见
-> [community-plugin-audit handbook](https://github.com/sandbaseai/deepseek-harness-handbook/blob/main/docs/en/security/community-plugin-audit.md)。
->
-> ```yaml
-> # ✗ 不要 —— 配置文件里写明文主密码
-> - id: vault
->   name: dsh-vault
->   config:
->     masterPassword: 'my-secret'
-> ```
->
-> ```yaml
-> # ✓ 应该 —— 引用环境变量,并让文件本身保持 0600
-> - id: vault
->   name: dsh-vault
->   config:
->     masterPasswordEnv: DSH_VAULT_PASSWORD
-> ```
+普通 GUI 使用首次密码表单即可。主动采用环境变量部署时，只把**变量名**放进 profile，不要放值：
 
-| 配置项 | 说明 |
-|---|---|
-| `masterPassword` | 直接配置主密码（会出现在 cordis.yml 中，不推荐） |
-| `masterPasswordEnv` | 环境变量名，运行时从该变量读取主密码（推荐） |
-| `path` | 保险库文件路径，默认 `$DSH_HOME/vault/default.json` |
-| `name` | 保险库名，用于默认路径（如 `name: work` → `$DSH_HOME/vault/work.json`） |
-| `accessMode` | 模型工具的访问策略，三态：`readonly`（只读，工具与设置页的增/改/删全部被拒绝）、`ask`（默认——写入前询问，每次增/改/删都会走 harness 审批通道请你确认）、`auto`（自动读写，无需逐次确认）。设置页提供同样的三选一下拉并持久化到 `<vault 目录>/access.json`。 |
-| `autoCapture` | `false`（默认）。设为 `true` 时，系统提示词会指导模型识别对话中出现的凭据，并**按用户偏好**用 `vault_add` 提供保存。 |
-| `lockTimeoutSeconds` | 自动锁库：空闲超过该秒数后自动重新锁定（清空内存密钥），之后每次读写需 `vault_unlock`。`0`/缺省为禁用。 |
-| `exportPasswordEnv` | 存放 `vault_export`/`vault_import` 导出密码的环境变量名（绝不能作为模型参数传入）。 |
-| `backupRetention` | 保留多少个加密备份（默认 10）；`vault_backup` 自动清理更旧的副本。 |
-
-示例：
-
-```yaml
+~~~yaml
 - id: vault
   name: dsh-vault
   config:
     masterPasswordEnv: DSH_VAULT_PASSWORD
     accessMode: ask
-    autoCapture: true
-```
+    autoCapture: false
+    tools: basic
+    lockTimeoutSeconds: 300
+~~~
 
-`autoCapture: true` 时，当你在对话中分享凭据（如 "我的 npm token 是 npm_…"），助手会提议存入；你同意后立即调用 `vault_add`。`autoCapture` 关闭时，只有你明确要求才保存。设置页显示当前模式（只读 / 写入前询问 / 自动读写）可用下拉切换，还有**自动捕获开关**（检测对话中的凭据 → 提议保存）、类型筛选、健康与轮换摘要、回收站视图、以及默认遮罩的密钥字段（显示/隐藏切换）。
+bundle 已提供 vault 行；此处展示配置结构，不是让你重复插入插件。
 
-首次调用任一工具时自动创建保险库；之后每次启动用主密码重新解锁。**忘记主密码 = 数据永久丢失**（无后门，这是设计使然）。
+| 选项 | 含义 |
+|---|---|
+| masterPasswordEnv | 宿主解锁材料的环境变量名；必须对实际宿主进程可见 |
+| masterPassword | 兼容内联密码，**不推荐**；明文配置可能被提交、备份或截图 |
+| path／name | 显式库路径或库名，默认 DSH_HOME/vault/default.json |
+| accessMode | readonly／ask（默认）／auto，已保存 GUI 策略优先于回退配置 |
+| autoCapture | 默认 false，捕获主动分享的凭据仍遵循用户意愿 |
+| lockTimeoutSeconds | 闲置锁定秒数，0／缺省关闭；GUI 策略可覆盖 |
+| tools | basic／standard／full／custom；已保存选择优先 |
+| exportPasswordEnv | 独立便携导出／导入密码的环境变量引用 |
+| backupRetention | 本地加密备份保留数，默认 10 |
 
-## 开发
+使用适当 POSIX 权限或 Windows ACL 保护配置与库目录。环境引用可减少配置文件意外泄漏，不会向宿主进程或同用户工具隐藏秘密。
 
-本地 clone 开发:
+## 故障排查
 
-```sh
-git clone git@github.com:Ox0400/dsh-vault.git
-cd dsh-vault
-pnpm install    # 安装 devDependencies(typescript/tsdown/vitest 等)
-pnpm build      # 构建 host 侧 lib/*.js 与浏览器 bundle lib/client.js
-pnpm test       # 运行 506 项 vitest 测试
-```
+| 现象 | 下一步检查 |
+|---|---|
+| 找不到设置入口 | 插件是否启用在真正服务当前 DSH 的 profile；宿主和客户端构建是否加载；是否重复注册 |
+| 重启后锁定 | 在本地表单重新输入主密码，或配置正确宿主环境；不要让助手接收主密码 |
+| CLI 不存在 | 使用源码入口或正常 profile／全局安装；手工链接可能没有 shim |
+| GUI 可用但 CLI 解锁失败 | 独立进程：核对其库路径与已授权密码输入，不要以 GUI 状态推断 |
+| env 没有值 | 只有 env 标签条目才导出；先看 list 和 env --keys-only |
+| 某个工具不可见 | 默认只有 11 个；按需切标准／完整或更窄的自定义组 |
+| 导入无法确认 | 检查是否解锁可写、预览新鲜且有有效选择；锁库／修改输入／过期后必须重做 |
+| Git 可读但不能推送 | 读探测不等于写权限；核对 token／SSH 范围、仓库／分支、本地 ahead／分叉状态；不要 force push |
+| 同步提示本地／远端已变化 | 刷新、检查冲突，重新预览；不要复用旧批准 |
+| 更新后样式／文字不对 | 安装重建产物后刷新当前 DSH 页面；另开无关服务不会更新此页面 |
+| 恢复码验证成功仍锁定 | 符合设计：代码持有证明不是解密或重置主密码 |
 
-> 测试需要 harness 的 `dsh-llm`/`dsh-system-prompt` 等 peer 包,在 harness monorepo 内开发时由 workspace 链接提供。
+## 开发与发布
 
-凭据列表里的品牌图标是**内联进浏览器包**的 68 条 SVG 路径 —— 没有运行时依赖,也不联网。它们是生成的,而且生成器就在仓库里:
+项目脚本定义见 [package.json](<package.json>)；本文不承诺固定测试数量。
 
-```sh
-npm i --no-save simple-icons@16      # 15 MB,仅开发用;永远不会成为本包的依赖
-pnpm gen:icons                       # 重新生成 src/client/site-icons.ts
-pnpm gen:icons -- --check            # 与上游不一致时退出 1
-```
-
-生成器只重写图标表;`gist.github.com`、`console.cloud.google.com` 这类**主机→品牌映射是人工整理的判断**,会原样保留。simple-icons 后来下架的品牌(`amazonaws`、`slack`、`linkedin` 等)会被保留并列出,而不是被静默丢掉。
-
-常用命令:
-
-```sh
-# 单元 + 集成测试（vitest，506 项）
-pnpm test            # 或 npx vitest run
-
-# 类型检查
-pnpm typecheck       # tsc -p tsconfig.json --noEmit
-
-# 构建（host 侧 lib/*.js 与浏览器 bundle lib/client.js）
-pnpm build           # = build:host (tsc) + build:client (tsdown)
-
-# 打包发布（可选：npm pack 产物可直接 `dsh plugin add ./dsh-vault-0.1.1.tgz`）
+~~~sh
+npm run typecheck
+npm test -- tests/readme-tools.spec.ts
+npm test
+npm run build
+npm run scan:secrets
 npm pack
-```
+~~~
 
-仓库内所有测试通过：506/506（crypto/TOTP/密码生成/store CRUD/网关/集成）。
+README 专项测试根据注册源码检查全部覆盖、五组成员与标题计数。完整测试／构建由发布负责人执行；合成 fixture 不证明你的真实云账号可用。
+发布前检查 tarball 内容、保留许可声明，绝不提交真实库／env 文件／录屏凭据，只在负责人授权后发布／推送。本地源码版本、npm 版本、GitHub Release 是三个不同状态。
+浏览器会话支持可选；支持某种导入格式不代表你的全部平台组合均已实测。验证恢复前妥善保留原始导出。
 
-浏览器侧检查跑在真实 `dsh web` 上（不属于 vitest），且**一律拒绝在 default 库上运行**：
+## 延伸文档与许可
 
-```sh
-node tests/e2e/theme-check.mjs      # 双主题 token、进度环轨道、附件行
-node tests/e2e/polish-check.mjs     # 空态文案、相对时间悬停
-node tests/e2e/contrast-audit.mjs   # 8 个标签页 × 双主题的 WCAG 对比度扫描
-```
+- [中文 GUI 指南](<docs/gui-guide-zh.md>) · [English GUI guide](<docs/gui-guide.md>)
+- [/1pass 技能源码](<skills/1pass/SKILL.md>)
+- [编辑器、TOTP 与快速导入实现说明](<docs/credential-editor-quick-import.md>)
+- [当前云端同步说明](<docs/cloud-sync.md>) · [通道实现契约](<docs/cloud-sync-transports.md>)（英文）
+- [旧版单向云备份](<docs/cloud-backup.md>) · [GUI 集成与参考说明](<docs/gui-reference.md>)
+- [主密钥托管设计草案——不是已实现功能](<docs/master-key-custody.md>)
+- [MIT 许可](<LICENSE>) · [第三方归属声明](<NOTICE>)
 
-安全规则与「让对比度审计说谎的两个坑」见 `tests/e2e/README.md`。
+工作台和同步 UI 含保留 MIT 归属的 dsh-config-manager 派生组件；不代表与该项目、DSH 或商业 1Password 存在从属关系。
 
-## 不让凭据进入公开内容
-
-本仓库的一切都是公开的 —— npm 包、GitHub release、issue 与 discussion 帖子。发布前用 `pnpm scan:secrets` 扫描工作区、被跟踪文件与提交信息中所有「像凭据」的字符串;`pnpm scan:public` 会额外扫描已经发布出去的每个 release 与评论。本地扫描也包含在 `pnpm test` 里,所以被提交进来的凭据会让测试失败,而不是被发出去。
-
-## 主题适配
-
-UI 不写死颜色，而是读取宿主的设计变量：本地语义层映射到真实的 `--dsw-alias-*` 命名空间，并带字面量兜底，脱离 DeepSeek Harness 也能正常渲染。
-
-```css
---v-text: var(--dsw-alias-label-primary, #1f2328);
---v-border: var(--dsw-alias-border-l2, #d9d9d9);
---v-success-text: color-mix(in srgb, var(--v-success) 55%, var(--v-text));
-```
-
-因为别名会随 `body[data-ds-dark-theme]` 翻转，浅色/深色自动跟随宿主 —— 没有第二套样式表，也没有主题参数。
-
-这层语义层要守住的两条规则：
-
-- **状态色 `state-*-primary` 不能当正文颜色。** 它们是为填充块和图标调的：白底上 success 只有 2.28:1、warn 只有 2.15:1，远低于 WCAG AA。`--v-*-text` 变体把它们与主题正文色混合，于是同一条声明在浅色下压暗、深色下提亮（浅色 5.8/5.6/7.5:1，深色 12+/11+/6.5:1）。
-- **不要用 `opacity` 弱化文字。** `opacity: .8` 会把 5.8:1 变成 3.9:1。要「次要」就用 token（`--v-text-2`），不要用透明度。
-
-`tests/e2e/contrast-audit.mjs` 会在两套主题、全部标签页上验证这两条。
-
-## 打包与发布
-
-本包是标准 npm bundle:
-
-- `dsh.bundle.patch` → `cordis.patch.yml`(安装到 profile 后自动应用的 layer)
-- `dsh.client` → 浏览器端声明(`exports["./client"]` 指向 `lib/client.js`)
-- `prepare` 脚本 → git 安装时自包含构建(`tsc` host + `tsdown` client)
-- 没有运行时 `dependencies`:宿主提供的一切都走 `peerDependencies`,不会产生重复实例。
-  `playwright-core` 只有浏览器登录会话用得到、且是懒加载,因此声明为**可选** peer ——
-  普通安装**不会**下载它(约 13 MB)。需要那组工具时,把它装进你的 profile:
-  `cd ~/.dsh/profiles/web && npm i playwright-core`
-
-可选发布途径:
-
-```sh
-npm pack                  # 产出 tarball → dsh plugin add ./dsh-vault-0.1.1.tgz
-npm publish --access public   # 发布 npm → dsh plugin add dsh-vault
-```
-
-## 安全边界与已知限制
-
-### 它保护什么
-
-- **离开这台机器的保险库文件** —— 备份、同步盘、被拿走的硬盘。条目用 AES-256-GCM 加密,密钥由主密码经 scrypt 派生(N=32768, r=8, p=1,参数持久化在文档里,以后可提升;旧文档仍可解密)。
-- **同一台机器上的其他用户** —— 保险库文件与 CLI 写出的文件都是 `0600`。
-- **秘密意外进入模型上下文** —— `vault_search` / `vault_update` 从不返回密码、密钥或令牌;CLI 的存在就是为了让脚本取密钥时不必经过一次对话。
-- **把密码写进配置文件** —— 前提是你用 `masterPasswordEnv` 而不是 `masterPassword`(见上方警告)。
-
-### 它不保护什么
-
-- **同一个宿主进程里的其他插件。** dsh-vault 自己就是个插件:它与 harness 同进程运行,解密后的条目就在那个进程的内存里。`readonly` / `ask` / `auto` 约束的是**模型的工具调用**,不是插件之间的隔离。harness 对自己的凭据存储也是同样的说法:agent 的工具进程以你的 OS 用户身份运行,因此"无法把秘密与 agent 隔离"([`@deepseek-ai/dsh-credentials-local`](https://github.com/deepseek-ai/deepseek-harness/tree/main/packages/credentials/credentials-local))。只有把插件放到独立进程运行才能改变这一点,而这不是某个插件能自己做到的。
-- **被攻陷的机器或账号** —— 键盘记录器、挂在 harness 进程上的调试器,或任何以你的身份运行的东西。
-- **你自己敲进文件、截图或 shell 历史里的主密码。** 所以才要 `masterPasswordEnv`。
-- **模型拿到值之后做什么。** `vault_get` 会把值放进该次工具调用的结果,也就是模型上下文;`vault_search`/`vault_update` 则从不暴露。
-
-### 减少暴露面
-
-`lockTimeoutSeconds` 会在空闲后自动锁库,`vault_lock` 可以随时手动锁;两者都会清空内存中的密钥。把主密钥交给操作系统钥匙串(macOS Keychain / Windows Credential Manager / libsecret)能让明文密码**不再出现在配置与环境文件里** —— 也就是"磁盘被复制后仍然存在"的那部分暴露 —— 但它**不会**造出进程内边界:以你的身份运行的插件同样可以向钥匙串索取同一个条目。DSH 项目目前把"OS 钥匙串凭据提供方"列为待做事项。
-
-已知限制:本插件面向单机/个人部署;团队共享保险库不在范围内。
-
-## 已收录于
-
-- [awesome-dsh-plugin](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/blob/main/README.zh.md#L2869) — 官方精选目录（安全与防护分类）
-- [awesome-deepseek-harness (Dominic789654)](https://github.com/Dominic789654/awesome-deepseek-harness/blob/main/README.zh-CN.md#L903) — 社区目录（安全分类）
-
-等待维护者合并的提交：[Anil-matcha/awesome-dsh-plugin #127](https://github.com/Anil-matcha/awesome-dsh-plugin/pull/127) · [0xsline/awesome-deepseek-harness #563](https://github.com/0xsline/awesome-deepseek-harness/pull/563) · [dsh-handbook #65](https://github.com/Electricitysheep/dsh-handbook/pull/65)
+[English](<README.md>) | [简体中文](<README-zh.md>) · [返回目录](#目录)

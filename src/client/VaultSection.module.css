@@ -1575,10 +1575,10 @@
 .embedded .reportBox { margin: 0 0 10px; padding: 12px; border-radius: var(--dsw-radius-md, 12px); border-color: var(--dsw-alias-border-l1, var(--v-border)); background: var(--v-bg-2); }
 .embedded .reportTitle { font-size: 13px; font-weight: 600; }
 .embedded .toolbar { gap: 8px; }
-.embedded :is(button,input,select,textarea) { font-family: inherit; font-size: 12px; }
-.embedded :is(input,select) { min-height: 28px; border-radius: var(--dsw-radius-sm, 8px); }
-.embedded button { min-height: 24px; border-radius: var(--dsw-radius-sm, 8px); }
-.embedded :is(button,input,select,textarea,a):focus-visible { outline: 2px solid var(--dsw-focus-ring-color, var(--v-accent)); outline-offset: 2px; }
+.embedded :is(button,input,select,textarea):not(:where([data-vault-cloud-sync] *)) { font-family: inherit; font-size: 12px; }
+.embedded :is(input,select):not(:where([data-vault-cloud-sync] *)) { min-height: 28px; border-radius: var(--dsw-radius-sm, 8px); }
+.embedded button:not(:where([data-vault-cloud-sync] *)) { min-height: 24px; border-radius: var(--dsw-radius-sm, 8px); }
+.embedded :is(button,input,select,textarea,a):not(:where([data-vault-cloud-sync] *)):focus-visible { outline: 2px solid var(--dsw-focus-ring-color, var(--v-accent)); outline-offset: 2px; }
 .embedded .row { padding: 10px 8px; border-radius: var(--dsw-radius-sm, 8px); }
 .embedded .rowActions button { min-height: 24px; padding: 2px 8px; }
 .embedded .list { gap: 6px; }
@@ -1592,3 +1592,29 @@
 .embedded .editorActions { flex: none; margin: 0; padding: 10px 16px; border-top: 1px solid var(--dsw-alias-border-l1, var(--v-border)); background: var(--v-bg-2); }
 .embedded .editorActions button { height: 28px; padding: 0 12px; }
 @media (max-width:480px) { .embedded .editorBody { grid-template-columns: minmax(0,1fr); } .embedded .gridRow { grid-template-columns: minmax(0,1fr) auto; } .embedded .gridDetail { grid-column: 1; } .embedded .importRow { grid-template-columns: minmax(0,1fr) auto; } .embedded .importDesc { grid-column: 1; } }
+
+/* Credential editor additions retain the workbench's existing token palette. */
+.wideField, .editorErrors, .editorExtras, .editorAdvanced { grid-column: 1 / -1; min-width: 0; }
+.field > label { display: block; font-size: 12px; }
+.fieldHint { color: var(--v-text-2); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.fieldError { color: var(--v-danger-text); font-size: 12px; line-height: 1.5; }
+.field :is(input,textarea,select)[aria-invalid="true"] { border-color: var(--v-danger-text); }
+.editorErrors { border: 1px solid var(--v-danger-text); border-radius: 8px; padding: 8px 10px; color: var(--v-danger-text); }
+.editorErrors ul { margin: 6px 0 0; padding-left: 20px; }
+.editorErrors a { color: inherit; text-decoration: underline; }
+.editorExtras { padding: 8px 10px; border: 1px solid var(--v-border); border-radius: 8px; font-size: 12px; }
+.editorExtras p { margin: 4px 0; color: var(--v-text-2); }
+.editorExtras span { color: var(--v-text-2); }
+.editorAdvanced { border-top: 1px solid var(--v-border); padding-top: 8px; }
+.editorAdvanced summary { cursor: pointer; padding: 4px 0; font-size: 12px; }
+.advancedFields { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px 12px; padding-top: 8px; }
+.secretField textarea { flex: 1; min-width: 0; width: 100%; }
+.secretTextarea, .maskedTextarea { font-family: ui-monospace, monospace !important; overflow-wrap: anywhere; }
+.maskedTextarea { -webkit-text-security: disc; }
+.secretField { align-items: flex-start; flex-wrap: wrap; }
+.secretField > input { flex: 1 1 100%; height: 28px; min-height: 28px; }
+.secretActions { display: flex; gap: 4px; align-items: flex-start; flex-wrap: wrap; max-width: 100%; }
+.genOptRow > select { min-width: 172px; max-width: 100%; }
+.secretActions button { min-height: 28px; }
+.editorBody .field :is(input,textarea,select) { min-width: 0; max-width: 100%; }
+@media (max-width:480px) { .advancedFields { grid-template-columns: minmax(0,1fr); } .secretField { flex-wrap: wrap; } .secretActions { max-width: 100%; } }

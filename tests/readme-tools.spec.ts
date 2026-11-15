@@ -59,7 +59,7 @@ function toolColumn(text: string): Set<string> {
 
 /** The documented tools per group, in document order. */
 function documentedGroups(path: string, heading: string): { heading: string; tools: Set<string> }[] {
-  const section = readFileSync(join(root, path), 'utf8').split(heading)[1]!.split('\n## ')[0]!
+  const section = readFileSync(join(root, path), 'utf8').split(new RegExp('^' + heading + '\r?$', 'm'))[1]!.split('\n## ')[0]!
   return section.split(/^### /m).slice(1).map(block => {
     const [title = '', ...rest] = block.split('\n')
     return { heading: title.trim(), tools: toolColumn(rest.join('\n')) }
@@ -70,7 +70,7 @@ const ORDER = ['core', 'management', 'io', 'sessions', 'files'] as const
 
 for (const [path, heading] of [['README.md', '## Tools'], ['README-zh.md', '## 工具']] as const) {
   test(`${path}: every registered tool is documented, and nothing else is`, () => {
-    const section = readFileSync(join(root, path), 'utf8').split(heading)[1]!.split('\n## ')[0]!
+    const section = readFileSync(join(root, path), 'utf8').split(new RegExp('^' + heading + '\r?$', 'm'))[1]!.split('\n## ')[0]!
     const mentioned = toolColumn(section)
     expect([...registered].filter(tool => !mentioned.has(tool))).toEqual([])
     // A tool named in the README that the plugin does not register would be a

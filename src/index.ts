@@ -21,14 +21,20 @@ import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import Schema from '@deepseek-ai/schemastery'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
-import { readFile, writeFile, mkdir, readdir, unlink, rename as renameFile } from 'node:fs/promises'
+import { stat, readFile, writeFile, mkdir, readdir, unlink, rename as renameFile } from 'node:fs/promises'
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { homedir } from 'node:os'
 import { existsSync, readdirSync, statSync } from 'node:fs'
 import { basename, dirname, join, resolve } from 'node:path'
 import { createCloudBackupManager, changeCloudBackupVault, onCloudVaultLifecycle, type CloudBackupManager } from './cloud-backup.ts'
 import type { CloudBackupSettings, CloudBackupView } from './cloud-backup-types.ts'
-import { onVaultPersist, notifyVaultPersist } from './store.ts'
+import { onVaultPersist, notifyVaultPersist, onVaultLock } from './store.ts'
+import { QuickImportSessions, quickImportIdentity } from './quick-import-session.ts'
+import { VaultCloudSync } from './cloud-sync/controller.ts'
+import { syncScopeDirectory, changeSyncScope } from './cloud-sync/scope.ts'
+import type { SyncSecretPort } from './cloud-sync/config.ts'
+import type { QuickImportOptions } from './quick-import.ts'
+import type { QuickImportPreview, QuickImportCommitResult } from './quick-import-types.ts'
 import { envLinesFor, shellQuote, type EnvExportable } from './env-export.ts'
 import { openVault, defaultVaultPath, type VaultEntry, type VaultEntryKind, type VaultEntryPatch, type VaultEntrySummary, type VaultStore, type CookieData } from './store.ts'
 import { totp, parseTotpSecret, hotp, base32Decode } from './totp.ts'
@@ -115,7 +121,10 @@ export const Config: Schema<Config> = Schema.object({
 /** Built-in field templates per credential kind. */
 const TEMPLATES: Record<string, Record<string, string>> = {
   login: { username: 'account username', email: 'account email', password: 'account password' },
-  ssh: { host: 'server host', port: 'port (e.g. 22)', username: 'login user', password: 'password or passphrase', privateKey: 'PEM private key' },
+  totp: { username: 'account name (optional)', otpSecret: 'Base32 setup key or otpauth://totp provisioning URI', url: 'account website (optional)' },
+  ssh: { host: 'server host', ip: 'optional IP address', port: 'port (e.g. 22)', username: 'login user', password: 'SSH login password' },
+  'ssh-password': { host: 'server host', ip: 'optional IP address', port: 'port (e.g. 22)', username: 'login user', password: 'SSH login password' },
+  'ssh-certificate': { host: 'server host', ip: 'optional IP address', port: 'port (e.g. 22)', username: 'login user', privateKey: 'PEM or OpenSSH private key', certificate: 'optional OpenSSH user certificate', keyPassphrase: 'optional private key passphrase' },
   'api-key': { apiKey: 'the API key', url: 'API base URL', username: 'owner/account (optional)' },
   oauth: { accessToken: 'access token', refreshToken: 'refresh token', expiresAt: 'expiry epoch millis', clientId: 'client id (via fields)', scope: 'granted scopes (via fields)', tokenUrl: 'token endpoint (via fields)' },
   secret: { secret: 'the shared secret', notes: 'what it is for' },
@@ -463,7 +472,11 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       password: { type: 'string', description: 'The password to store.' },
       host: { type: 'string', description: 'SSH host or service hostname.' },
       port: { type: 'string', description: 'SSH/service port, e.g. "22" or "3306".' },
-      privateKey: { type: 'string', description: 'SSH private key (PEM).' },
+      privateKey: { type: 'string', description: 'SSH private key (PEM/OpenSSH).' },
+      sshAuth: { type: 'string', enum: ['password', 'certificate'], description: 'SSH authentication mode.' },
+      ip: { type: 'string', description: 'Optional IP address separate from host alias.' },
+      certificate: { type: 'string', description: 'Optional OpenSSH user certificate.' },
+      keyPassphrase: { type: 'string', description: 'Private key passphrase (secret).' },
       apiKey: { type: 'string', description: 'API key.' },
       secret: { type: 'string', description: 'Generic secret (client secret, shared secret, …).' },
       accessToken: { type: 'string', description: 'OAuth access token.' },
@@ -517,6 +530,10 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
         ...(args.host !== undefined ? { host: args.host } : {}),
         ...(args.port !== undefined ? { port: args.port } : {}),
         ...(args.privateKey !== undefined ? { privateKey: args.privateKey } : {}),
+        ...(args.sshAuth !== undefined ? { sshAuth: args.sshAuth } : {}),
+        ...(args.ip !== undefined ? { ip: args.ip } : {}),
+        ...(args.certificate !== undefined ? { certificate: args.certificate } : {}),
+        ...(args.keyPassphrase !== undefined ? { keyPassphrase: args.keyPassphrase } : {}),
         ...(args.apiKey !== undefined ? { apiKey: args.apiKey } : {}),
         ...(args.secret !== undefined ? { secret: args.secret } : {}),
         ...(args.accessToken !== undefined ? { accessToken: args.accessToken } : {}),
@@ -576,7 +593,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       if (args.redact === true) {
         const redacted: Record<string, unknown> = {}
         for (const [k, v] of Object.entries(full)) {
-          if (typeof v === 'string' && v.length > 0 && ['password', 'apiKey', 'secret', 'accessToken', 'refreshToken', 'otpSecret', 'privateKey'].includes(k)) {
+          if (typeof v === 'string' && v.length > 0 && ['password', 'apiKey', 'secret', 'accessToken', 'refreshToken', 'otpSecret', 'privateKey', 'certificate', 'keyPassphrase', 'cardNumber', 'cardCvv'].includes(k)) {
             redacted[k] = v.length > 8 ? v.slice(0, 4) + '***' : '***'
           } else {
             redacted[k] = v
@@ -685,7 +702,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
           return bu - au || a.title.localeCompare(b.title)
         })
       }
-      return { results: filtered, total: filtered.length }
+      return { results: filtered.map(toModelSummary), total: filtered.length }
     },
   }))
 
@@ -708,6 +725,10 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       host: { type: 'string', description: 'New SSH host or hostname.' },
       port: { type: 'string', description: 'New port.' },
       privateKey: { type: 'string', description: 'New SSH private key.' },
+      sshAuth: { type: 'string', enum: ['password', 'certificate'], description: 'SSH authentication mode.' },
+      ip: { type: 'string', description: 'Optional IP address separate from host alias.' },
+      certificate: { type: 'string', description: 'Optional OpenSSH user certificate.' },
+      keyPassphrase: { type: 'string', description: 'Private key passphrase (secret).' },
       apiKey: { type: 'string', description: 'New API key.' },
       secret: { type: 'string', description: 'New secret.' },
       accessToken: { type: 'string', description: 'New OAuth access token.' },
@@ -752,7 +773,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       const s = await guardStore()
       const patch: VaultEntryPatch = {}
       for (const key of [
-        'title', 'kind', 'sensitivity', 'favorite', 'rotationDays', 'username', 'email', 'phone', 'password', 'host', 'port', 'privateKey',
+        'title', 'kind', 'sensitivity', 'favorite', 'rotationDays', 'username', 'email', 'phone', 'password', 'host', 'ip', 'port', 'privateKey', 'sshAuth', 'certificate', 'keyPassphrase',
         'apiKey', 'secret', 'accessToken', 'refreshToken', 'expiresAt', 'envKey', 'envKeys', 'otpSecret', 'url', 'notes', 'tags', 'fields',
       ] as const) {
         const value = args[key]
@@ -1467,7 +1488,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
         entries = entries.filter(e => (e.updatedAt ?? 0) >= since)
       }
       const filtered = args.kind === undefined ? entries : entries.filter(e => (e.kind ?? 'login') === args.kind)
-      return { entries: filtered }
+      return { entries: filtered.map(toModelSummary) }
     },
   }))
 
@@ -1789,14 +1810,14 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       for (const e of s.list()) {
         const key = `${e.title.toLowerCase()}::${e.kind ?? 'login'}`
         const list = byKey.get(key) ?? []
-        list.push(toSummary(e))
+        list.push(toModelSummary(e))
         byKey.set(key, list)
         // Content-based duplicates: same username+password hash → same credential.
         const secret = e.password ?? e.apiKey ?? e.secret ?? e.accessToken
         if (secret !== undefined) {
           const contentKey = `${(e.username ?? e.email ?? '').toLowerCase()}::${secret}`
           const cl = byContent.get(contentKey) ?? []
-          cl.push(toSummary(e))
+          cl.push(toModelSummary(e))
           byContent.set(contentKey, cl)
         }
       }
@@ -1972,6 +1993,10 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
         ...(entry.host !== undefined ? { host: entry.host } : {}),
         ...(entry.port !== undefined ? { port: entry.port } : {}),
         ...(entry.privateKey !== undefined ? { privateKey: entry.privateKey } : {}),
+        ...(entry.sshAuth !== undefined ? { sshAuth: entry.sshAuth } : {}),
+        ...(entry.ip !== undefined ? { ip: entry.ip } : {}),
+        ...(entry.certificate !== undefined ? { certificate: entry.certificate } : {}),
+        ...(entry.keyPassphrase !== undefined ? { keyPassphrase: entry.keyPassphrase } : {}),
         ...(entry.apiKey !== undefined ? { apiKey: entry.apiKey } : {}),
         ...(entry.secret !== undefined ? { secret: entry.secret } : {}),
         ...(entry.accessToken !== undefined ? { accessToken: entry.accessToken } : {}),
@@ -2207,7 +2232,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     async execute(args) {
       const s = await guardStore()
       const limit = validateLimit(args.limit, 'vault_last_modified')
-      const entries = [...s.list()].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, limit).map(e => toSummary(e))
+      const entries = [...s.list()].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, limit).map(e => toModelSummary(e))
       return { entries: entries as unknown as JsonValue[] }
     },
   }))
@@ -2508,7 +2533,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
         if (results.length >= limit) break
         const hay = [e.title, e.username, e.email, e.host, e.url, ...(e.tags ?? [])].filter(Boolean).join(' ').toLowerCase()
         if (hay.includes(needle)) {
-          results.push({ ...toSummary(e), deleted: true } as unknown as JsonValue)
+          results.push({ ...toModelSummary(e), deleted: true } as unknown as JsonValue)
         }
       }
       return { results }
@@ -3087,7 +3112,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       + 'the right field names (e.g. kind ssh → host/port/username/password/privateKey). Also supports '
       + 'user-defined templates (action: save/list/remove) persisted next to the vault (KeePassXC-style).',
     parameters: {
-      kind: { type: 'string', description: 'Entry kind; default login.', enum: ['login', 'ssh', 'api-key', 'secret', 'oauth', 'cookie', 'card', 'custom'] },
+      kind: { type: 'string', description: 'Template kind; default login. SSH variants separate password and certificate authentication.', enum: ['login', 'totp', 'ssh', 'ssh-password', 'ssh-certificate', 'api-key', 'secret', 'oauth', 'cookie', 'card', 'custom'] },
       action: { type: 'string', description: 'get (default) | save | list | remove.', enum: ['get', 'save', 'list', 'remove'] },
       name: { type: 'string', description: 'Custom template name (required for save/remove).' },
       fields: { type: 'json', description: 'Field template for action=save, e.g. {"username":"account","password":""}.' },
@@ -3104,12 +3129,14 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       } catch { /* no custom templates yet */ }
       if (args.action === 'save') {
         assertWritable('vault_templates')
+        await guardStore()
         const name = typeof args.name === 'string' ? args.name.trim() : ''
         if (!name) throw new Error('vault_templates: name is required for save')
         const fields = (args.fields ?? {}) as Record<string, unknown>
         const clean: Record<string, string> = {}
-        for (const [k, v] of Object.entries(fields)) {
-          if (typeof v === 'string') clean[k] = v
+        if (Object.keys(fields).length > 50) throw new Error('vault_templates: too many fields')
+        for (const k of Object.keys(fields)) {
+          if (/^[A-Za-z][A-Za-z0-9]{0,63}$/.test(k) && !['title', 'notes'].includes(k)) clean[k] = k
         }
         custom = custom.filter(t => t.name !== name)
         custom.push({ name, kind, fields: clean })
@@ -3119,6 +3146,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       }
       if (args.action === 'remove') {
         assertWritable('vault_templates')
+        await guardStore()
         const name = typeof args.name === 'string' ? args.name.trim() : ''
         const before = custom.length
         custom = custom.filter(t => t.name !== name)
@@ -3174,7 +3202,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       const entries = s.list().filter(e => (kind === undefined || (e.kind ?? 'login') === kind)
         && (args.favoriteOnly !== true || e.favorite === true)
         && (tag.length === 0 || (e.tags ?? []).includes(tag)))
-      const secretFields = ['password', 'apiKey', 'secret', 'accessToken', 'refreshToken', 'otpSecret', 'privateKey', 'cardNumber', 'cardCvv']
+      const secretFields = ['password', 'apiKey', 'secret', 'accessToken', 'refreshToken', 'otpSecret', 'privateKey', 'keyPassphrase', 'cardNumber', 'cardCvv']
       const metaFields = ['url', 'email', 'phone', 'host', 'port', 'expiresAt', 'rotationDays', 'notes', 'tags', 'sensitivity', 'favorite', 'icon', 'color', 'cardExpiry', 'cardHolder']
       const healthFields = ['weakPassword', 'no2fa', 'httpSite', 'expired']
       const stampFields = ['createdAt', 'updatedAt']
@@ -4285,18 +4313,16 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
           names.push(m[1]!)
         }
       } catch { /* dir may not exist yet */ }
-      const active = currentVaultName ?? config.name
-        ?? (config.path !== undefined ? basename(config.path).replace(/\.json$/, '') : undefined)
-        ?? 'default'
+      const activePath = resolve(resolveVaultPath(config))
       // Report each vault's entry count by opening it (same master password),
       // so a roster of junk/test vaults is easy to spot.
       const vaults = []
       for (const name of names.sort()) {
         try {
           const store = await sharedVaultStore(masterPassword, { name, path: join(dir, `${name}.json`) })
-          vaults.push({ name, active: name === active, entries: store.list().length + store.listTrash().length })
+          vaults.push({ name, active: resolve(join(dir, `${name}.json`)) === activePath, entries: store.list().length + store.listTrash().length })
         } catch {
-          vaults.push({ name, active: name === active, entries: -1 })
+          vaults.push({ name, active: resolve(join(dir, `${name}.json`)) === activePath, entries: -1 })
         }
       }
       return { vaults }
@@ -4355,7 +4381,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       const target = join(dir, `${to}.json`)
       if (await existsFile(source) === false) throw new Error(`vault_vault_rename: vault "${from}" not found`)
       if (await existsFile(target)) throw new Error(`vault_vault_rename: vault "${to}" already exists`)
-      await changeCloudBackupVault(source, target, () => renameFile(source, target))
+      await changeCloudBackupVault(source, target, async () => { await renameFile(source, target); try { await changeSyncScope(source,target) } catch(error) { await renameFile(target,source); throw error } })
       // Drop cached stores for both names so the next open reads the new file.
       sharedVaultStores.delete(`${target}\0${masterPassword}`)
       if (currentVaultName === from) currentVaultName = to
@@ -4387,7 +4413,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       const dir = dirname(resolveVaultPath(config))
       const source = join(dir, `${name}.json`)
       if (await existsFile(source) === false) throw new Error(`vault_vault_delete: vault "${name}" not found`)
-      await changeCloudBackupVault(source, undefined, () => unlink(source))
+      await changeCloudBackupVault(source, undefined, async () => { await changeSyncScope(source); await unlink(source) })
       sharedVaultStores.delete(`${source}\0${masterPassword}`)
       if (currentVaultName === name) currentVaultName = 'default'
       const roster = await listVaultRoster(config)
@@ -4454,12 +4480,35 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
  * instance per process). Returns the number of registered tools. */
 let reapplyToolProfile: (() => number) | undefined
 
+
+/** Optional host credential provider: only refs/booleans cross the API boundary. */
+function createSyncSecretPort(ctx: Context): SyncSecretPort {
+  const provider = (): {resolve(ref:string):Promise<{value?:string}|undefined>;describe(ref:string):Promise<{configured:boolean}>;set(ref:string,value:string):Promise<void>;unset(ref:string):Promise<void>} => {
+    const value: unknown = ctx.get('credentials' as never)
+    if (!value || typeof value !== 'object' || !['resolve','describe','set','unset'].every(key => typeof (value as Record<string,unknown>)[key] === 'function')) throw new Error('SYNC_CREDENTIAL_PROVIDER_UNAVAILABLE')
+    return value as ReturnType<typeof provider>
+  }
+  const bounded = async <T>(work:Promise<T>):Promise<T> => {
+    let timer:ReturnType<typeof setTimeout>|undefined
+    try{return await Promise.race([work,new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(new Error('SYNC_CREDENTIAL_TIMEOUT')),10000)})])}
+    finally{if(timer)clearTimeout(timer)}
+  }
+  return {
+    get:async ref=>{const result=await bounded(provider().resolve(ref));return typeof result?.value==='string'?result.value:undefined},
+    has:async ref=>(await bounded(provider().describe(ref))).configured===true,
+    set:async(ref,value)=>bounded(provider().set(ref,value)),
+    unset:async ref=>bounded(provider().unset(ref)),
+  }
+}
+
 export class VaultGateway extends TypertRemoteService {
   static inject = ['tools']
 
   private masterPassword: string
   private readonly onPasswordOpened: ((password: string) => void) | undefined
   private openingChain: Promise<unknown> = Promise.resolve()
+  private readonly quickImports: QuickImportSessions
+  private importEpoch = 0
   private readonly vaultPath: string | undefined
   private readonly vaultName: string | undefined
   private accessPolicy: AccessPolicy
@@ -4467,28 +4516,60 @@ export class VaultGateway extends TypertRemoteService {
   private activeName: string | undefined
   private readonly genHistory: Array<{ password: string; at: number }> = []
   private readonly cloudManagers = new Map<string, CloudBackupManager>()
+  private readonly cloudSyncManagers = new Map<string, VaultCloudSync>()
+  private readonly cloudSyncSecrets: SyncSecretPort
   private cloudDisposed = false
   private readonly cloudPausedPaths = new Set<string>()
   private readonly cloudDefaultMode: AccessMode
 
   constructor(ctx: Context, config: Config & { accessPolicy?: AccessPolicy; onPasswordOpened?: (password: string) => void }) {
     super(ctx, 'vault')
+    this.cloudSyncSecrets = createSyncSecretPort(ctx)
     this.masterPassword = config.masterPassword ?? resolveMasterPassword(config, false)
     this.onPasswordOpened = config.onPasswordOpened
     this.vaultPath = config.path
     this.vaultName = config.name
-    this.activeName = config.name
+    this.activeName = config.path !== undefined ? basename(config.path, '.json') : config.name ?? 'default'
     this.accessPolicy = config.accessPolicy ?? { mode: config.accessMode ?? 'ask', autoCapture: config.autoCapture ?? false }
     this.backupRetention = config.backupRetention ?? 10
     this.cloudDefaultMode = config.accessMode ?? this.accessPolicy.mode
+    this.quickImports = new QuickImportSessions(async write => {
+      if (this.cloudDisposed) throw new Error('QUICK_IMPORT_UNAVAILABLE')
+      if (write) this.assertWritable('commitQuickImport')
+      const store = await this.guardedStore()
+      const epoch = this.importEpoch
+      const scope = this.activeName
+      return { identity: store, path: store.filePath, vaultName: this.activeName ?? 'default', entries: store.list().map(entry => ({ title: entry.title, ...(entry.kind !== undefined ? { kind: entry.kind } : {}), ...(entry.username !== undefined ? { username: entry.username } : {}), ...(entry.host !== undefined ? { host: entry.host } : {}), ...(entry.ip !== undefined ? { ip: entry.ip } : {}), ...(entry.port !== undefined ? { port: entry.port } : {}) })),
+        write: async entries => {
+          if (this.cloudDisposed) throw new Error('QUICK_IMPORT_UNAVAILABLE')
+          this.assertWritable('commitQuickImport')
+          const active = await this.guardedStore()
+          if (active !== store) throw new Error('QUICK_IMPORT_VAULT_CHANGED')
+          const authorize = () => {
+            if (this.cloudDisposed || epoch !== this.importEpoch || scope !== this.activeName) throw new Error('QUICK_IMPORT_VAULT_CHANGED')
+            this.assertWritable('commitQuickImport')
+          }
+          authorize()
+          const added = await store.addMany(entries, quickImportIdentity, authorize)
+          const keys = new Set(added.map(quickImportIdentity))
+          await this.autoBackup()
+          return entries.map(entry => keys.delete(quickImportIdentity(entry)))
+        },
+      }
+    })
     const root = resolve(this.vaultPath ?? defaultVaultPath(this.activeName))
     const directory = dirname(root)
     this.cloudForPath(root)
+    void this.resumeConfiguredSync(root)
     ctx.effect(() => {
+      const unobserveLock = onVaultLock(path => {
+        if (this.vaultPath !== undefined ? path === root : dirname(path) === directory) { this.importEpoch++; this.quickImports.revoke(); this.cloudSyncManagers.get(path)?.revoke() }
+      })
       const unsubscribe = onVaultPersist(path => {
         if (this.cloudDisposed || this.cloudPausedPaths.has(path)) return
         if (this.vaultPath !== undefined ? path === root : dirname(path) === directory) {
           this.cloudForPath(path).notifyChange()
+          this.cloudSyncManagers.get(path)?.notifyChange()
         }
       })
       const unobserveLifecycle = onCloudVaultLifecycle(async (phase, paths) => {
@@ -4499,9 +4580,12 @@ export class VaultGateway extends TypertRemoteService {
             const manager = this.cloudManagers.get(path)
             this.cloudManagers.delete(path)
             if (manager) await manager.dispose()
+            const sync = this.cloudSyncManagers.get(path)
+            this.cloudSyncManagers.delete(path)
+            if (sync) await sync.dispose()
           } else {
             this.cloudPausedPaths.delete(path)
-            if (!this.cloudDisposed && existsSync(path)) this.cloudForPath(path)
+            if (!this.cloudDisposed && existsSync(path)) {this.cloudForPath(path);void this.resumeConfiguredSync(path)}
           }
         }
       })
@@ -4510,14 +4594,19 @@ export class VaultGateway extends TypertRemoteService {
         void readdir(directory).then(names => {
           if (this.cloudDisposed) return
           for (const name of names) {
-            if (/^[A-Za-z0-9._-]+\.json$/.test(name) && !isNonVaultFile(name) && !isBackupFile(name)) this.cloudForPath(join(directory, name))
+            if (/^[A-Za-z0-9._-]+\.json$/.test(name) && !isNonVaultFile(name) && !isBackupFile(name)) {this.cloudForPath(join(directory,name));void this.resumeConfiguredSync(join(directory,name))}
           }
         }).catch(() => {})
       }
       return async () => {
         this.cloudDisposed = true
         unsubscribe()
+        unobserveLock()
         unobserveLifecycle()
+        await this.quickImports.dispose()
+        await Promise.allSettled([...this.cloudSyncOpenings.values()]);
+        await Promise.all([...this.cloudSyncManagers.values()].map(manager => manager.dispose()))
+        this.cloudSyncManagers.clear()
         await Promise.all([...this.cloudManagers.values()].map(manager => manager.dispose()))
         this.cloudManagers.clear()
         await this.openingChain
@@ -4547,6 +4636,44 @@ export class VaultGateway extends TypertRemoteService {
       this.cloudManagers.set(key, manager)
     }
     return manager
+  }
+
+  private readonly cloudSyncOpenings = new Map<string, Promise<VaultCloudSync>>()
+  private async syncForPath(input: string): Promise<VaultCloudSync> {
+    const path=resolve(input)
+    if(this.cloudDisposed||this.cloudPausedPaths.has(path))throw new Error('SYNC_SCOPE_CHANGED')
+    const known=this.cloudSyncManagers.get(path);if(known)return known
+    const opening=this.cloudSyncOpenings.get(path);if(opening)return opening
+    const create=async():Promise<VaultCloudSync>=>{
+      const scope=path===resolve(this.vaultPath??defaultVaultPath(this.activeName))?this.activeName:basename(path,'.json')
+      let authorizedStore:VaultStore|undefined
+      let permitted=false
+      const authorize=()=>{if(this.cloudDisposed||this.cloudPausedPaths.has(path)||!authorizedStore||authorizedStore.isLocked||authorizedStore.expired||!permitted)throw new Error('SYNC_SCOPE_CHANGED');if(path===resolve(this.vaultPath??defaultVaultPath(this.activeName)))this.assertWritable('cloudSync')}
+      const manager=new VaultCloudSync({stateDir:await syncScopeDirectory(path),vaultName:scope??'default',secrets:this.cloudSyncSecrets,authorizeSync:authorize,context:async()=>{
+        if(this.cloudDisposed||this.cloudPausedPaths.has(path)||!this.masterPassword)throw new Error('SYNC_SCOPE_CHANGED')
+        const store=await sharedVaultStore(this.masterPassword,{path})
+        if(store.isLocked||store.expired)throw new Error('SYNC_LOCKED')
+        const policy=await sharedAccessPolicy({path,accessMode:this.cloudDefaultMode})
+        authorizedStore=store;permitted=policy.mode!=='readonly'
+        return {store,authorize}
+      }})
+      if(this.cloudDisposed||this.cloudPausedPaths.has(path)){await manager.dispose();throw new Error('SYNC_SCOPE_CHANGED')}
+      this.cloudSyncManagers.set(path,manager)
+      try{await manager.start();return manager}catch(error){this.cloudSyncManagers.delete(path);await manager.dispose();throw error}
+    }
+    const work=create();this.cloudSyncOpenings.set(path,work)
+    try{return await work}finally{if(this.cloudSyncOpenings.get(path)===work)this.cloudSyncOpenings.delete(path)}
+  }
+  private async resumeConfiguredSync(path:string):Promise<void>{
+    try{const state=await syncScopeDirectory(path);await stat(join(state,'sync-config.json'));if(!this.cloudDisposed)await this.syncForPath(path)}catch{/* No configured sync is inert; errors are surfaced by its explicit UI entry. */}
+  }
+
+  /** GUI-only reference synchronization API; no model tool accepts bulk secrets. */
+  @Remote('cloudSyncCall')
+  async cloudSyncCall(action: string, payload?: unknown): Promise<unknown> {
+    if (typeof action !== 'string' || action.length > 64) throw new Error('SYNC_INVALID_ACTION')
+    const path = resolve(this.vaultPath ?? defaultVaultPath(this.activeName))
+    return (await this.syncForPath(path)).call(action,payload)
   }
 
   @Remote('cloudBackup')
@@ -4607,10 +4734,7 @@ export class VaultGateway extends TypertRemoteService {
   private async ensureStore(): Promise<VaultStore> {
     if (this.cloudDisposed) throw new Error('vault: plugin is unavailable')
     if (this.masterPassword.length === 0) throw new Error('vault: open the password manager Settings page to create or unlock the vault first')
-    return sharedVaultStore(this.masterPassword, {
-      ...(this.vaultPath !== undefined ? { path: this.vaultPath } : {}),
-      ...(this.activeName !== undefined ? { name: this.activeName } : {}),
-    })
+    return sharedVaultStore(this.masterPassword, { path: resolve(this.vaultPath ?? defaultVaultPath(this.activeName)) })
   }
 
   /** Ensure the store and refuse reads/writes while the vault is locked. */
@@ -4663,6 +4787,7 @@ export class VaultGateway extends TypertRemoteService {
     if (mode !== 'readonly' && mode !== 'ask' && mode !== 'auto') {
       throw new Error(`vault: invalid accessMode "${String(mode)}" (expected readonly, ask, or auto)`)
     }
+    if (this.accessPolicy.mode !== mode) { this.importEpoch++; this.quickImports.revoke(); for (const manager of this.cloudSyncManagers.values()) manager.revoke() }
     this.accessPolicy.mode = mode
     await this.persistPolicy()
     return { accessMode: this.accessPolicy.mode, autoCapture: this.accessPolicy.autoCapture, autoLockSeconds: this.accessPolicy.autoLockSeconds ?? 0 }
@@ -4703,8 +4828,7 @@ export class VaultGateway extends TypertRemoteService {
   private policyConfig(): Config {
     return {
       masterPassword: this.masterPassword,
-      ...(this.vaultPath !== undefined ? { path: this.vaultPath } : {}),
-      ...(this.activeName !== undefined ? { name: this.activeName } : {}),
+      path: resolve(this.vaultPath ?? defaultVaultPath(this.activeName)),
     } as unknown as Config
   }
 
@@ -4975,12 +5099,22 @@ export class VaultGateway extends TypertRemoteService {
     try {
       custom = JSON.parse(await readFile(tplPath, 'utf8'))
     } catch { /* none yet */ }
-    return [...builtin, ...custom]
+    // Legacy templates may contain old entry values. The editor needs field names only.
+    const safeCustom = custom.filter(template => template && typeof template.name === 'string' && typeof template.kind === 'string' && template.fields && typeof template.fields === 'object' && !Array.isArray(template.fields)).map(template => ({ ...template, fields: Object.fromEntries(Object.keys(template.fields).filter(key => /^[A-Za-z][A-Za-z0-9]{0,63}$/.test(key) && !['title', 'notes'].includes(key)).map(key => [key, key])) }))
+    return [...builtin, ...safeCustom]
   }
 
   /** Save the current form as a reusable template. */
   @Remote('saveTemplate')
   async saveTemplate(name: string, kind: string, fields: Record<string, string>): Promise<{ saved: boolean }> {
+    this.assertWritable('saveTemplate')
+    await this.guardedStore()
+    if (typeof name !== 'string' || !name.trim() || name.length > 100 || name.startsWith('builtin:')) throw new Error('vault: invalid template name')
+    if (typeof kind !== 'string' || !Object.hasOwn(TEMPLATES, kind)) throw new Error('vault: invalid template kind')
+    if (!fields || typeof fields !== 'object' || Array.isArray(fields) || Object.keys(fields).length > 50) throw new Error('vault: invalid template fields')
+    // Reusable form templates describe field names, never actual account values.
+    fields = Object.fromEntries(Object.keys(fields).filter(key => /^[A-Za-z][A-Za-z0-9]{0,63}$/.test(key) && !['title', 'notes'].includes(key)).map(key => [key, key]))
+    name = name.trim()
     const tplPath = join(dirname(this.vaultPath ?? defaultVaultPath(this.activeName)), 'templates.json')
     let custom: Array<{ name: string; kind: string; fields: Record<string, string> }> = []
     try {
@@ -5554,6 +5688,9 @@ export class VaultGateway extends TypertRemoteService {
     if (isNonVaultFile(clean) || isBackupFile(`${clean}.json`)) {
       throw new Error('vault: that is a metadata/sidecar file, not a vault (choose a real vault from the list)')
     }
+    this.importEpoch++
+    this.quickImports.revoke()
+    for (const manager of this.cloudSyncManagers.values()) manager.revoke()
     this.activeName = clean
     const store = await this.ensureStore()
     // Access policy is per vault: rebind to the new vault's object/file so a
@@ -5566,7 +5703,8 @@ export class VaultGateway extends TypertRemoteService {
   /** List available vault files (one .json per vault, excluding access/meta/exports). */
   @Remote('listVaults')
   async listVaults(): Promise<Array<{ name: string; active: boolean; entries?: number }>> {
-    const dir = dirname(this.vaultPath ?? defaultVaultPath(this.activeName))
+    const activePath = resolve(this.vaultPath ?? defaultVaultPath(this.activeName))
+    const dir = dirname(activePath)
     const names: string[] = []
     try {
       const entries = await readdir(dir)
@@ -5579,11 +5717,14 @@ export class VaultGateway extends TypertRemoteService {
     } catch { /* no dir yet */ }
     const out: Array<{ name: string; active: boolean; entries?: number }> = []
     for (const name of names.sort()) {
+      const active = resolve(join(dir, `${name}.json`)) === activePath
+      // Roster identity is readable before opening; never try an empty password just to count entries.
+      if (this.masterPassword.length === 0) { out.push({ name, active }); continue }
       try {
         const store = await sharedVaultStore(this.masterPassword, { name, path: join(dir, `${name}.json`) })
-        out.push({ name, active: name === this.activeName, entries: store.list().length + store.listTrash().length })
+        out.push({ name, active: resolve(join(dir, `${name}.json`)) === activePath, entries: store.list().length + store.listTrash().length })
       } catch {
-        out.push({ name, active: name === this.activeName })
+        out.push({ name, active: resolve(join(dir, `${name}.json`)) === activePath })
       }
     }
     return out
@@ -5617,7 +5758,7 @@ export class VaultGateway extends TypertRemoteService {
     const target = join(dir, `${to}.json`)
     if (!(await existsFile(source))) throw new Error(`vaultRename: vault "${from}" not found`)
     if (await existsFile(target)) throw new Error(`vaultRename: vault "${to}" already exists`)
-    await changeCloudBackupVault(source, target, () => renameFile(source, target))
+    await changeCloudBackupVault(source, target, async () => { await renameFile(source, target); try { await changeSyncScope(source,target) } catch(error) { await renameFile(target,source); throw error } })
     sharedVaultStores.delete(`${target}\0${this.masterPassword}`)
     if (this.activeName === from) this.activeName = to
     const vaults = await listVaultRoster({ ...(this.vaultPath !== undefined ? { path: this.vaultPath } : {}) }, this.activeName)
@@ -5637,7 +5778,7 @@ export class VaultGateway extends TypertRemoteService {
     const dir = dirname(this.vaultPath ?? defaultVaultPath(this.activeName))
     const source = join(dir, `${name}.json`)
     if (!(await existsFile(source))) throw new Error(`vaultDelete: vault "${name}" not found`)
-    await changeCloudBackupVault(source, undefined, () => unlink(source))
+    await changeCloudBackupVault(source, undefined, async () => { await changeSyncScope(source); await unlink(source) })
     // Sidecars belong to the vault that is gone: its audit trail and its
     // per-vault access policy would otherwise outlive it (and a re-created
     // vault of the same name would silently inherit the stale policy).
@@ -5833,6 +5974,22 @@ export class VaultGateway extends TypertRemoteService {
     return { entries: store.search(query, limit).map(toSummary) }
   }
 
+  /** Parse and mask only; nothing is saved until an explicit GUI confirmation. */
+  @Remote('previewQuickImport')
+  async previewQuickImport(text: string, options: QuickImportOptions): Promise<QuickImportPreview> {
+    return this.quickImports.preview(text, options)
+  }
+
+  @Remote('commitQuickImport')
+  async commitQuickImport(token: string, lines: number[], confirm: boolean): Promise<QuickImportCommitResult> {
+    return this.quickImports.commit(token, lines, confirm)
+  }
+
+  @Remote('discardQuickImport')
+  async discardQuickImport(token: string): Promise<{ discarded: boolean }> {
+    return this.quickImports.discard(token)
+  }
+
   /** Add a new entry; returns its id and summary. */
   @Remote('add')
   async add(patch: VaultEntryPatch & { title: string }): Promise<VaultEntrySummaryWire> {
@@ -5867,7 +6024,7 @@ export class VaultGateway extends TypertRemoteService {
 
   /** Generate the current TOTP code for a stored otpSecret (or bare secret). */
   @Remote('totp')
-  async totp(id?: string, secret?: string): Promise<{ code: string; label?: string; secondsRemaining: number }> {
+  async totp(id?: string, secret?: string): Promise<{ code: string; label?: string; secondsRemaining: number; periodSeconds: number }> {
     if ((id === undefined) === (secret === undefined)) {
       throw new Error('vault.totp: provide exactly one of id or secret')
     }
@@ -5883,10 +6040,12 @@ export class VaultGateway extends TypertRemoteService {
       input = secret!
     }
     const nowMs = Date.now()
+    const period = parseTotpSecret(input).periodSeconds
     return {
       code: totp(input, nowMs),
       ...(label !== undefined ? { label } : {}),
-      secondsRemaining: 30 - (Math.floor(nowMs / 1000) % 30),
+      secondsRemaining: period - (Math.floor(nowMs / 1000) % period),
+      periodSeconds: period,
     }
   }
 
@@ -6044,6 +6203,8 @@ export type VaultEntrySummaryWire = {
   email?: string
   phone?: string
   host?: string
+  ip?: string
+  sshAuth?: 'password' | 'certificate'
   port?: string
   url?: string
   tags?: string[]
@@ -6112,6 +6273,8 @@ function toSummary(entry: VaultEntry | VaultEntrySummary): VaultEntrySummaryWire
     ...(entry.email !== undefined ? { email: entry.email } : {}),
     ...(entry.phone !== undefined ? { phone: entry.phone } : {}),
     ...(entry.host !== undefined ? { host: entry.host } : {}),
+    ...(entry.ip !== undefined ? { ip: entry.ip } : {}),
+    ...(entry.sshAuth !== undefined ? { sshAuth: entry.sshAuth } : {}),
     ...(entry.port !== undefined ? { port: entry.port } : {}),
     ...(entry.url !== undefined ? { url: entry.url } : {}),
     ...(entry.tags !== undefined ? { tags: entry.tags } : {}),
@@ -6481,8 +6644,14 @@ function parsePastedCookies(text: string): CookieData[] {
 }
 
 /** A summary view of an entry without timestamps or secrets (used by update output). */
+/** Model summaries never carry arbitrary custom values; GUI toSummary remains separate. */
+function toModelSummary(entry: VaultEntry | VaultEntrySummary): Omit<VaultEntrySummaryWire, 'fields'> {
+  const { fields: _customValues, ...summary } = toSummary(entry)
+  return summary
+}
+
 function toSummaryJson(entry: VaultEntry | VaultEntrySummary): JsonValue {
-  return toSummary(entry) as unknown as JsonValue
+  return toModelSummary(entry) as unknown as JsonValue
 }
 
 /** Strip timestamps from an entry for model-visible output (keeps secrets
@@ -6589,8 +6758,8 @@ async function listVaultRoster(config: Config, activeName?: string): Promise<Arr
       names.push(m[1]!)
     }
   } catch { /* no dir yet */ }
-  const active = activeName ?? currentVaultName
-  return names.sort().map(name => ({ name, active: name === active }))
+  const activePath = resolve(config.path ?? defaultVaultPath(activeName ?? currentVaultName ?? config.name ?? 'default'))
+  return names.sort().map(name => ({ name, active: resolve(join(dir, `${name}.json`)) === activePath }))
 }
 
 /** Format a backup filename: `<vault>-backups-YYYY-MM-DD_HH-MM-SS.json` so the
@@ -6873,6 +7042,8 @@ function stripFieldsForPatch(entry: VaultEntry): VaultEntryPatch {
     ...(entry.phone !== undefined ? { phone: entry.phone } : {}),
     ...(entry.password !== undefined ? { password: entry.password } : {}),
     ...(entry.host !== undefined ? { host: entry.host } : {}),
+    ...(entry.ip !== undefined ? { ip: entry.ip } : {}),
+    ...(entry.sshAuth !== undefined ? { sshAuth: entry.sshAuth } : {}),
     ...(entry.port !== undefined ? { port: entry.port } : {}),
     ...(entry.privateKey !== undefined ? { privateKey: entry.privateKey } : {}),
     ...(entry.apiKey !== undefined ? { apiKey: entry.apiKey } : {}),

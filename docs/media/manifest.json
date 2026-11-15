@@ -1,0 +1,5232 @@
+{
+  "schema": 1,
+  "synthetic": true,
+  "scope": "Actual VaultWorkbench + CloudSyncPanel production components; invented in-memory responses, not real account, encryption, transport, or browser authentication proof.",
+  "viewport": {
+    "width": 960,
+    "height": 740
+  },
+  "fps": 8,
+  "encoding": "ffmpeg fps=8, split, palettegen stats_mode=diff, paletteuse bayer, loop=0",
+  "sources": {
+    "scripts/docs-demo-render.tsx": "5e3c7b9ecf723b861f937430e3dd108554bb9720534eeb361daf81e04f51aa10",
+    "scripts/docs-demo.config.ts": "32a7cee7972b810efc9efa8dc00824db891b05fe3583b898ee23b29162cc9d6a",
+    "scripts/record-docs-gifs.mjs": "dfe26a8805e5148de582c0b683d0e58048d27b6ac83988ed5ef446456a6767ae",
+    "src/client/VaultWorkbench.tsx": "2fe41da7b1a60e766c5c1b8f6c5300bda1fb8d0404bf8f12b779422b2ef737ed",
+    "src/client/VaultSection.tsx": "d1856492d39063297a7a5bf61b5326036a02db32544b1cd8f11328160a3aecba",
+    "src/client/CloudSyncPanel.tsx": "d55198122b20423d9963af430c4fe843b07cb46840ba5106299e52d758eaac10"
+  },
+  "results": [
+    {
+      "file": "docs/media/overview-zh.gif",
+      "locale": "zh",
+      "scenario": "overview",
+      "durationSeconds": 10,
+      "bytes": 202176,
+      "sha256": "cc026e931259ac63ee78582457000bae0c8f7d21141222d7802057d55848fa11",
+      "sourceFrameCount": 8,
+      "encodedFrameCount": 80,
+      "frames": [
+        {
+          "file": "lib/docs-demo/overview-zh/000.png",
+          "state": "home",
+          "atSeconds": 0,
+          "holdSeconds": 1.25,
+          "sha256": "38b1201a67cdb4e7aa2c52ad0eba405e7b57e77c47255c780b84a795e15651a8",
+          "observed": {
+            "panes": [],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/overview-zh/001.png",
+          "state": "command-palette",
+          "atSeconds": 1.25,
+          "holdSeconds": 1.25,
+          "sha256": "9039296179f2b9b60f62c1aaf7ac5be0c179582c8251deab97de07ccc536f13e",
+          "observed": {
+            "panes": [],
+            "dialogs": [
+              "命令面板"
+            ],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/overview-zh/002.png",
+          "state": "command-filter",
+          "atSeconds": 2.5,
+          "holdSeconds": 1.25,
+          "sha256": "bd39d6256e023a6a5b5e896aba0cad1188f0a923c8cb2087d3a40485d9ad9fa2",
+          "observed": {
+            "panes": [],
+            "dialogs": [
+              "命令面板"
+            ],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/overview-zh/003.png",
+          "state": "settings-nav",
+          "atSeconds": 3.75,
+          "holdSeconds": 1.25,
+          "sha256": "ce848d4d9a79651a7ffbf7e2ca3ed0bd1ed7f6941fbf8ee5add457bca1ab8379",
+          "observed": {
+            "panes": [
+              "permissions"
+            ],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/overview-zh/004.png",
+          "state": "about",
+          "atSeconds": 5,
+          "holdSeconds": 1.25,
+          "sha256": "75df3246bd27c643ac393de616969e8a359b9933ec58eaef5b6c7bcceaae2b7b",
+          "observed": {
+            "panes": [],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/overview-zh/005.png",
+          "state": "recent-activity",
+          "atSeconds": 6.25,
+          "holdSeconds": 1.25,
+          "sha256": "6566c260d9674a801bfb5dbbed894d8e661288f7a58e2e58cade19546e7e2252",
+          "observed": {
+            "panes": [],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/overview-zh/006.png",
+          "state": "entries-nav",
+          "atSeconds": 7.5,
+          "holdSeconds": 1.25,
+          "sha256": "a6780cd0df6015c4b159fe3fc96f7708c2d3231602737cd24a7e209038357bfb",
+          "observed": {
+            "panes": [
+              "entries",
+              "entries",
+              "entries"
+            ],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/overview-zh/007.png",
+          "state": "home-return",
+          "atSeconds": 8.75,
+          "holdSeconds": 1.25,
+          "sha256": "1bada261b9e71397aaba33ab971ec6a7ef312fc71de3636f92407826df8711cf",
+          "observed": {
+            "panes": [],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        }
+      ],
+      "actions": [
+        {
+          "kind": "click",
+          "description": "Open command palette",
+          "target": "命令面板",
+          "atSeconds": 1.25,
+          "rect": {
+            "x": 828,
+            "y": 62,
+            "width": 28,
+            "height": 28
+          }
+        },
+        {
+          "kind": "fill",
+          "description": "Filter command palette",
+          "atSeconds": 2.5
+        },
+        {
+          "kind": "click",
+          "description": "Select Settings",
+          "target": "设置",
+          "atSeconds": 3.75,
+          "rect": {
+            "x": 245,
+            "y": 156,
+            "width": 470,
+            "height": 32
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Navigate home",
+          "target": "首页",
+          "atSeconds": 5,
+          "rect": {
+            "x": 10,
+            "y": 64,
+            "width": 44,
+            "height": 24
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Open About",
+          "target": "关于",
+          "atSeconds": 5,
+          "rect": {
+            "x": 924,
+            "y": 62,
+            "width": 28,
+            "height": 28
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Close task",
+          "target": "关闭",
+          "atSeconds": 6.25,
+          "rect": {
+            "x": 920,
+            "y": 105.5,
+            "width": 28,
+            "height": 28
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Open recent activity",
+          "target": "最近活动",
+          "atSeconds": 6.25,
+          "rect": {
+            "x": 860,
+            "y": 62,
+            "width": 28,
+            "height": 28
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Close task",
+          "target": "关闭",
+          "atSeconds": 7.5,
+          "rect": {
+            "x": 920,
+            "y": 105.5,
+            "width": 28,
+            "height": 28
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Navigate entries",
+          "target": "密码簿",
+          "atSeconds": 7.5,
+          "rect": {
+            "x": 56,
+            "y": 64,
+            "width": 56,
+            "height": 24
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Navigate home",
+          "target": "首页",
+          "atSeconds": 8.75,
+          "rect": {
+            "x": 10,
+            "y": 64,
+            "width": 44,
+            "height": 24
+          }
+        }
+      ],
+      "events": [
+        {
+          "kind": "click",
+          "atSeconds": 1.25,
+          "tag": "button",
+          "target": "命令面板",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 3.75,
+          "tag": "input",
+          "target": "搜索页面和操作…",
+          "role": "combobox",
+          "inputType": null
+        },
+        {
+          "kind": "click",
+          "atSeconds": 3.75,
+          "tag": "button",
+          "target": "设置",
+          "role": "option",
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 5,
+          "tag": "button",
+          "target": "首页",
+          "role": "tab",
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 5,
+          "tag": "button",
+          "target": "关于",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 6.25,
+          "tag": "button",
+          "target": "关闭",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 6.25,
+          "tag": "button",
+          "target": "最近活动",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 7.5,
+          "tag": "button",
+          "target": "关闭",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 7.5,
+          "tag": "button",
+          "target": "密码簿",
+          "role": "tab",
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 8.75,
+          "tag": "button",
+          "target": "首页",
+          "role": "tab",
+          "inputType": "button"
+        }
+      ],
+      "fixtureCalls": [],
+      "ffprobe": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "codec_name": "gif",
+            "width": 960,
+            "height": 740,
+            "nb_read_frames": "80"
+          }
+        ],
+        "format": {
+          "duration": "10.010000",
+          "size": "202176"
+        }
+      }
+    },
+    {
+      "file": "docs/media/credentials-zh.gif",
+      "locale": "zh",
+      "scenario": "credentials",
+      "durationSeconds": 11,
+      "bytes": 139244,
+      "sha256": "3bcc8800762daffff5cc563eb3407843c3c8afa1fe96e44bfc65b32fca9ba153",
+      "sourceFrameCount": 8,
+      "encodedFrameCount": 88,
+      "frames": [
+        {
+          "file": "lib/docs-demo/credentials-zh/000.png",
+          "state": "entries",
+          "atSeconds": 0,
+          "holdSeconds": 1.25,
+          "sha256": "50202ac35ccf7a7bdb69d684212ee07af1a035971f4d97f44ffd75a9f3f68957",
+          "observed": {
+            "panes": [
+              "entries",
+              "entries",
+              "entries"
+            ],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/credentials-zh/001.png",
+          "state": "search",
+          "atSeconds": 1.25,
+          "holdSeconds": 1.25,
+          "sha256": "2fb969d85abeaa41b71759079ecf413f9fc5bd4c5560f5c2cdbf80fb8866c943",
+          "observed": {
+            "panes": [
+              "entries",
+              "entries",
+              "entries"
+            ],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/credentials-zh/002.png",
+          "state": "type-filter",
+          "atSeconds": 2.5,
+          "holdSeconds": 1.25,
+          "sha256": "f829e12c4a55a3788a46399df684e34b126d409b08d4de6e1bfceebbbd1d0ae8",
+          "observed": {
+            "panes": [
+              "entries",
+              "entries",
+              "entries"
+            ],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/credentials-zh/003.png",
+          "state": "ssh-password",
+          "atSeconds": 3.75,
+          "holdSeconds": 1.5,
+          "sha256": "78a17742d548834d43743f0b4455c644b8701df6764c4daeb8c3635944255f64",
+          "observed": {
+            "panes": [],
+            "dialogs": [],
+            "maskedInputs": [
+              {
+                "label": "密码",
+                "hasValue": true
+              },
+              {
+                "label": "TOTP 密钥",
+                "hasValue": false
+              }
+            ]
+          }
+        },
+        {
+          "file": "lib/docs-demo/credentials-zh/004.png",
+          "state": "ssh-certificate",
+          "atSeconds": 5.25,
+          "holdSeconds": 1.5,
+          "sha256": "2b059496899f397d3584d89726d6114dd27ad011261b4511d07168f73d9ede94",
+          "observed": {
+            "panes": [],
+            "dialogs": [],
+            "maskedInputs": [
+              {
+                "label": "私钥口令（可选）",
+                "hasValue": false
+              },
+              {
+                "label": "TOTP 密钥",
+                "hasValue": false
+              }
+            ]
+          }
+        },
+        {
+          "file": "lib/docs-demo/credentials-zh/005.png",
+          "state": "totp-template",
+          "atSeconds": 6.75,
+          "holdSeconds": 1.5,
+          "sha256": "7c51abcf954030ae3c9a99ded4881be6c598505da21e834a3378b4b295f77930",
+          "observed": {
+            "panes": [],
+            "dialogs": [],
+            "maskedInputs": [
+              {
+                "label": "TOTP 密钥",
+                "hasValue": true
+              }
+            ]
+          }
+        },
+        {
+          "file": "lib/docs-demo/credentials-zh/006.png",
+          "state": "card-template",
+          "atSeconds": 8.25,
+          "holdSeconds": 1.5,
+          "sha256": "7103f6b7582abb6cf59d5affcbe02095bc2a3cdd61fe7fb8673fcc61e054b8bb",
+          "observed": {
+            "panes": [],
+            "dialogs": [],
+            "maskedInputs": [
+              {
+                "label": "卡号",
+                "hasValue": true
+              },
+              {
+                "label": "CVV",
+                "hasValue": true
+              },
+              {
+                "label": "TOTP 密钥",
+                "hasValue": false
+              }
+            ]
+          }
+        },
+        {
+          "file": "lib/docs-demo/credentials-zh/007.png",
+          "state": "editor-cancelled",
+          "atSeconds": 9.75,
+          "holdSeconds": 1.25,
+          "sha256": "93ed47a9175e21c03e46a789f9e78069f718e2a34477409f5e54cfc2a84d644b",
+          "observed": {
+            "panes": [
+              "entries",
+              "entries",
+              "entries"
+            ],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        }
+      ],
+      "actions": [
+        {
+          "kind": "click",
+          "description": "Navigate entries",
+          "target": "密码簿",
+          "atSeconds": 0,
+          "rect": {
+            "x": 56,
+            "y": 64,
+            "width": 56,
+            "height": 24
+          }
+        },
+        {
+          "kind": "fill",
+          "description": "Search demo-server",
+          "atSeconds": 1.25
+        },
+        {
+          "kind": "fill",
+          "description": "Clear search",
+          "atSeconds": 2.5
+        },
+        {
+          "kind": "click",
+          "description": "Open new credential editor",
+          "target": "+ 新增凭据",
+          "atSeconds": 3.75,
+          "rect": {
+            "x": 685.546875,
+            "y": 110,
+            "width": 86.453125,
+            "height": 29
+          }
+        },
+        {
+          "kind": "fill",
+          "description": "Enter synthetic title",
+          "atSeconds": 3.75
+        },
+        {
+          "kind": "fill",
+          "description": "Enter documentation-only IP",
+          "atSeconds": 3.75
+        },
+        {
+          "kind": "fill",
+          "description": "Enter demo user",
+          "atSeconds": 3.75
+        },
+        {
+          "kind": "fill",
+          "description": "Enter SSH port",
+          "atSeconds": 3.75
+        },
+        {
+          "kind": "fill",
+          "description": "Enter masked synthetic password",
+          "atSeconds": 3.75
+        },
+        {
+          "kind": "fill",
+          "description": "Type non-functional masked demo sentinel",
+          "atSeconds": 6.75
+        },
+        {
+          "kind": "fill",
+          "description": "Enter all-zero synthetic card",
+          "atSeconds": 8.25
+        },
+        {
+          "kind": "fill",
+          "description": "Enter synthetic CVV",
+          "atSeconds": 8.25
+        },
+        {
+          "kind": "fill",
+          "description": "Enter demo expiry",
+          "atSeconds": 8.25
+        },
+        {
+          "kind": "fill",
+          "description": "Enter demo holder",
+          "atSeconds": 8.25
+        },
+        {
+          "kind": "click",
+          "description": "Cancel draft without saving",
+          "target": "取消",
+          "atSeconds": 9.75,
+          "rect": {
+            "x": 12,
+            "y": 107.5,
+            "width": 46,
+            "height": 24
+          }
+        }
+      ],
+      "events": [
+        {
+          "kind": "click",
+          "atSeconds": 0,
+          "tag": "button",
+          "target": "密码簿",
+          "role": "tab",
+          "inputType": "button"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 2.5,
+          "tag": "select",
+          "target": "类型",
+          "role": null,
+          "inputType": null,
+          "selectedOption": "🖥️ SSH"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 3.75,
+          "tag": "button",
+          "target": "+ 新增凭据",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 3.75,
+          "tag": "select",
+          "target": "套用模板",
+          "role": null,
+          "inputType": null,
+          "selectedOption": "SSH 密码"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 3.75,
+          "tag": "input",
+          "target": "标题",
+          "role": null,
+          "inputType": "text"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 3.75,
+          "tag": "input",
+          "target": "主机",
+          "role": null,
+          "inputType": "text"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 3.75,
+          "tag": "input",
+          "target": "用户名",
+          "role": null,
+          "inputType": "text"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 3.75,
+          "tag": "input",
+          "target": "端口",
+          "role": null,
+          "inputType": "text"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 5.25,
+          "tag": "select",
+          "target": "套用模板",
+          "role": null,
+          "inputType": null,
+          "selectedOption": "SSH 证书 / 私钥"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 6.75,
+          "tag": "select",
+          "target": "套用模板",
+          "role": null,
+          "inputType": null,
+          "selectedOption": "TOTP / Google 验证器"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 8.25,
+          "tag": "select",
+          "target": "套用模板",
+          "role": null,
+          "inputType": null,
+          "selectedOption": "银行卡"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 8.25,
+          "tag": "input",
+          "target": "卡号",
+          "role": null,
+          "inputType": "password"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 8.25,
+          "tag": "input",
+          "target": "CVV",
+          "role": null,
+          "inputType": "password"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 8.25,
+          "tag": "input",
+          "target": "有效期（MM/YY）",
+          "role": null,
+          "inputType": "text"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 9.75,
+          "tag": "input",
+          "target": "持卡人",
+          "role": null,
+          "inputType": "text"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 9.75,
+          "tag": "button",
+          "target": "取消",
+          "role": null,
+          "inputType": "button"
+        }
+      ],
+      "fixtureCalls": [],
+      "ffprobe": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "codec_name": "gif",
+            "width": 960,
+            "height": 740,
+            "nb_read_frames": "88"
+          }
+        ],
+        "format": {
+          "duration": "11.010000",
+          "size": "139244"
+        }
+      }
+    },
+    {
+      "file": "docs/media/transfer-zh.gif",
+      "locale": "zh",
+      "scenario": "transfer",
+      "durationSeconds": 10.75,
+      "bytes": 158837,
+      "sha256": "90a6088dc58cf90b655ce85b0335ac1f1996cbf311779b1b04d58d2f8a22c4f6",
+      "sourceFrameCount": 8,
+      "encodedFrameCount": 86,
+      "frames": [
+        {
+          "file": "lib/docs-demo/transfer-zh/000.png",
+          "state": "paste-masked",
+          "atSeconds": 0,
+          "holdSeconds": 1.25,
+          "sha256": "14e9577d2d1026d31ebf609cdf28d62c179e333322d053cddc4cccdca28ba3b7",
+          "observed": {
+            "panes": [],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/transfer-zh/001.png",
+          "state": "preview",
+          "atSeconds": 1.25,
+          "holdSeconds": 1.25,
+          "sha256": "3f425260ca9e2fef67262c22d889d7af45a9f2293d4afde8717eab24c0e1a439",
+          "observed": {
+            "panes": [],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/transfer-zh/002.png",
+          "state": "select",
+          "atSeconds": 2.5,
+          "holdSeconds": 1.25,
+          "sha256": "62fb9a61491921eccf3610d451b22cfad6c0cd0edb0530a91fc338dda569706b",
+          "observed": {
+            "panes": [],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/transfer-zh/003.png",
+          "state": "confirmation",
+          "atSeconds": 3.75,
+          "holdSeconds": 1.25,
+          "sha256": "81222a2c397d656964a426feb12467263fe75d6e508401a137d7c1de71f124dd",
+          "observed": {
+            "panes": [],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/transfer-zh/004.png",
+          "state": "import-result",
+          "atSeconds": 5,
+          "holdSeconds": 1.25,
+          "sha256": "80b8209fe043747cb4b3e2a242c3a1ee6fd56c0928441acde7efb4a49815d66b",
+          "observed": {
+            "panes": [],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/transfer-zh/005.png",
+          "state": "transfer-pane",
+          "atSeconds": 6.25,
+          "holdSeconds": 1.5,
+          "sha256": "892cdba6f4c5e3c53d4d1f1e9d0395905e153fb24564e2e3bd3b91318f26544e",
+          "observed": {
+            "panes": [
+              "transfer"
+            ],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/transfer-zh/006.png",
+          "state": "local-backups",
+          "atSeconds": 7.75,
+          "holdSeconds": 1.5,
+          "sha256": "b09787b7fe0fcf05884c09febe8fc102065e4b554353681961643a7b4847f1dc",
+          "observed": {
+            "panes": [
+              "backup"
+            ],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/transfer-zh/007.png",
+          "state": "backup-result",
+          "atSeconds": 9.25,
+          "holdSeconds": 1.5,
+          "sha256": "8c89bdbc096ccd4c8e192ab30a4df40008f8d58c4115c6294b17aa654865b0a2",
+          "observed": {
+            "panes": [
+              "backup"
+            ],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        }
+      ],
+      "actions": [
+        {
+          "kind": "click",
+          "description": "Open quick import",
+          "target": "快速导入",
+          "atSeconds": 0,
+          "rect": {
+            "x": 114,
+            "y": 156,
+            "width": 90,
+            "height": 28
+          }
+        },
+        {
+          "kind": "fill",
+          "description": "Paste two synthetic lines",
+          "atSeconds": 0
+        },
+        {
+          "kind": "click",
+          "description": "Request synthetic preview",
+          "target": "预览凭据行",
+          "atSeconds": 1.25,
+          "rect": {
+            "x": 846.5,
+            "y": 645.8125,
+            "width": 84.5,
+            "height": 29.375
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Review selected rows",
+          "target": "检查选中的 1 行",
+          "atSeconds": 3.75,
+          "rect": {
+            "x": 819.265625,
+            "y": 591.0625,
+            "width": 111.734375,
+            "height": 29.375
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Explicitly confirm in-memory import",
+          "target": "导入选中的 1 行",
+          "atSeconds": 5,
+          "rect": {
+            "x": 819.265625,
+            "y": 642.4375,
+            "width": 111.734375,
+            "height": 29.375
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Close task",
+          "target": "关闭",
+          "atSeconds": 6.25,
+          "rect": {
+            "x": 920,
+            "y": 105.5,
+            "width": 28,
+            "height": 28
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Open command palette",
+          "target": "命令面板",
+          "atSeconds": 6.25,
+          "rect": {
+            "x": 828,
+            "y": 62,
+            "width": 28,
+            "height": 28
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Open transfer",
+          "target": "导入 / 导出",
+          "atSeconds": 6.25,
+          "rect": {
+            "x": 245,
+            "y": 156,
+            "width": 470,
+            "height": 32
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Close task",
+          "target": "关闭",
+          "atSeconds": 7.75,
+          "rect": {
+            "x": 920,
+            "y": 105.5,
+            "width": 28,
+            "height": 28
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Open command palette",
+          "target": "命令面板",
+          "atSeconds": 7.75,
+          "rect": {
+            "x": 828,
+            "y": 62,
+            "width": 28,
+            "height": 28
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Open local",
+          "target": "本地备份",
+          "atSeconds": 7.75,
+          "rect": {
+            "x": 245,
+            "y": 156,
+            "width": 470,
+            "height": 32
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Create synthetic local backup",
+          "target": "立即备份",
+          "atSeconds": 9.25,
+          "rect": {
+            "x": 29,
+            "y": 232.5,
+            "width": 70,
+            "height": 24
+          }
+        }
+      ],
+      "events": [
+        {
+          "kind": "click",
+          "atSeconds": 0,
+          "tag": "button",
+          "target": "快速导入",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 1.25,
+          "tag": "textarea",
+          "target": "凭据文本",
+          "role": null,
+          "inputType": null
+        },
+        {
+          "kind": "click",
+          "atSeconds": 1.25,
+          "tag": "button",
+          "target": "预览凭据行",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 3.75,
+          "tag": "button",
+          "target": "检查选中的 1 行",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 5,
+          "tag": "input",
+          "target": "我已检查预览，并同意导入选中的 1 行。",
+          "role": null,
+          "inputType": "checkbox",
+          "checked": true
+        },
+        {
+          "kind": "change",
+          "atSeconds": 5,
+          "tag": "input",
+          "target": "我已检查预览，并同意导入选中的 1 行。",
+          "role": null,
+          "inputType": "checkbox",
+          "checked": true
+        },
+        {
+          "kind": "click",
+          "atSeconds": 5,
+          "tag": "button",
+          "target": "导入选中的 1 行",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 6.25,
+          "tag": "button",
+          "target": "关闭",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 6.25,
+          "tag": "button",
+          "target": "命令面板",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 6.25,
+          "tag": "input",
+          "target": "搜索页面和操作…",
+          "role": "combobox",
+          "inputType": null
+        },
+        {
+          "kind": "click",
+          "atSeconds": 6.25,
+          "tag": "button",
+          "target": "导入 / 导出",
+          "role": "option",
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 7.75,
+          "tag": "button",
+          "target": "关闭",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 7.75,
+          "tag": "button",
+          "target": "命令面板",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 7.75,
+          "tag": "input",
+          "target": "搜索页面和操作…",
+          "role": "combobox",
+          "inputType": null
+        },
+        {
+          "kind": "click",
+          "atSeconds": 7.75,
+          "tag": "button",
+          "target": "本地备份",
+          "role": "option",
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 9.25,
+          "tag": "button",
+          "target": "立即备份",
+          "role": null,
+          "inputType": "button"
+        }
+      ],
+      "fixtureCalls": [],
+      "ffprobe": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "codec_name": "gif",
+            "width": 960,
+            "height": 740,
+            "nb_read_frames": "86"
+          }
+        ],
+        "format": {
+          "duration": "10.760000",
+          "size": "158837"
+        }
+      }
+    },
+    {
+      "file": "docs/media/cloud-sync-zh.gif",
+      "locale": "zh",
+      "scenario": "cloud-sync",
+      "durationSeconds": 15.5,
+      "bytes": 367453,
+      "sha256": "abbc194d876e972cf924c26b95c916a32163d8cf0b48783f84458f378d582eaf",
+      "sourceFrameCount": 11,
+      "encodedFrameCount": 124,
+      "frames": [
+        {
+          "file": "lib/docs-demo/cloud-sync-zh/000.png",
+          "state": "cloud-overview",
+          "atSeconds": 0,
+          "holdSeconds": 1.5,
+          "sha256": "7a7f27ba064341a07ea3d06c87462ae3f149d06ce152982ab42b220ad9e2ddad",
+          "observed": {
+            "panes": [
+              "backup"
+            ],
+            "dialogs": [],
+            "maskedInputs": [
+              {
+                "label": "加密密码",
+                "hasValue": false
+              },
+              {
+                "label": "确认密码",
+                "hasValue": false
+              },
+              {
+                "label": "解密密码（加密快照拉取/同步用，可选）",
+                "hasValue": false
+              }
+            ]
+          }
+        },
+        {
+          "file": "lib/docs-demo/cloud-sync-zh/001.png",
+          "state": "channel-git",
+          "atSeconds": 1.5,
+          "holdSeconds": 1.25,
+          "sha256": "6285f22a0f71dca020138e47d886a98279d2ffdd5ad454da0f74426941727faf",
+          "observed": {
+            "panes": [
+              "backup"
+            ],
+            "dialogs": [
+              "同步通道"
+            ],
+            "maskedInputs": [
+              {
+                "label": "加密密码",
+                "hasValue": false
+              },
+              {
+                "label": "确认密码",
+                "hasValue": false
+              },
+              {
+                "label": "解密密码（加密快照拉取/同步用，可选）",
+                "hasValue": false
+              },
+              {
+                "label": "认证 token",
+                "hasValue": false
+              }
+            ]
+          }
+        },
+        {
+          "file": "lib/docs-demo/cloud-sync-zh/002.png",
+          "state": "channel-webdav",
+          "atSeconds": 2.75,
+          "holdSeconds": 1.25,
+          "sha256": "d3487388a3632aad770830706d455ebeb09bedd8f95b503390c4528defbcaab4",
+          "observed": {
+            "panes": [
+              "backup"
+            ],
+            "dialogs": [
+              "同步通道"
+            ],
+            "maskedInputs": [
+              {
+                "label": "加密密码",
+                "hasValue": false
+              },
+              {
+                "label": "确认密码",
+                "hasValue": false
+              },
+              {
+                "label": "解密密码（加密快照拉取/同步用，可选）",
+                "hasValue": false
+              },
+              {
+                "label": "密码",
+                "hasValue": false
+              }
+            ]
+          }
+        },
+        {
+          "file": "lib/docs-demo/cloud-sync-zh/003.png",
+          "state": "channel-s3",
+          "atSeconds": 4,
+          "holdSeconds": 1.25,
+          "sha256": "cd37d2c84651b1780f6f41206b5fe4b29d464f74eb54e101e4574aeb3924331a",
+          "observed": {
+            "panes": [
+              "backup"
+            ],
+            "dialogs": [
+              "同步通道"
+            ],
+            "maskedInputs": [
+              {
+                "label": "加密密码",
+                "hasValue": false
+              },
+              {
+                "label": "确认密码",
+                "hasValue": false
+              },
+              {
+                "label": "解密密码（加密快照拉取/同步用，可选）",
+                "hasValue": false
+              },
+              {
+                "label": "Secret AccessKey",
+                "hasValue": false
+              }
+            ]
+          }
+        },
+        {
+          "file": "lib/docs-demo/cloud-sync-zh/004.png",
+          "state": "channel-gist",
+          "atSeconds": 5.25,
+          "holdSeconds": 1.25,
+          "sha256": "91f7212376bc610af9d7e8d564da4a86252d70e335fdeaa988de6a7413da620f",
+          "observed": {
+            "panes": [
+              "backup"
+            ],
+            "dialogs": [
+              "同步通道"
+            ],
+            "maskedInputs": [
+              {
+                "label": "加密密码",
+                "hasValue": false
+              },
+              {
+                "label": "确认密码",
+                "hasValue": false
+              },
+              {
+                "label": "解密密码（加密快照拉取/同步用，可选）",
+                "hasValue": false
+              },
+              {
+                "label": "Gist token",
+                "hasValue": false
+              }
+            ]
+          }
+        },
+        {
+          "file": "lib/docs-demo/cloud-sync-zh/005.png",
+          "state": "encryption",
+          "atSeconds": 6.5,
+          "holdSeconds": 1.5,
+          "sha256": "64bada035629e4c2eedd1ae2ad1a2aec69446f58698efdc7694204dbf227f035",
+          "observed": {
+            "panes": [
+              "backup"
+            ],
+            "dialogs": [],
+            "maskedInputs": [
+              {
+                "label": "加密密码",
+                "hasValue": false
+              },
+              {
+                "label": "确认密码",
+                "hasValue": false
+              },
+              {
+                "label": "解密密码（加密快照拉取/同步用，可选）",
+                "hasValue": false
+              }
+            ]
+          }
+        },
+        {
+          "file": "lib/docs-demo/cloud-sync-zh/006.png",
+          "state": "password-mismatch",
+          "atSeconds": 8,
+          "holdSeconds": 1.5,
+          "sha256": "c414f8b5eebbd92010503a6a40ae15b5628bc5fb2c71942e8c2f5469c6b18ef1",
+          "observed": {
+            "panes": [
+              "backup"
+            ],
+            "dialogs": [],
+            "maskedInputs": [
+              {
+                "label": "加密密码",
+                "hasValue": true
+              },
+              {
+                "label": "确认密码",
+                "hasValue": false
+              },
+              {
+                "label": "解密密码（加密快照拉取/同步用，可选）",
+                "hasValue": false
+              }
+            ]
+          }
+        },
+        {
+          "file": "lib/docs-demo/cloud-sync-zh/007.png",
+          "state": "password-confirmed",
+          "atSeconds": 9.5,
+          "holdSeconds": 1.5,
+          "sha256": "c7430fce4befa2056089e4f21dc5fc6f94416a2db72926dbad313db44dc23bfd",
+          "observed": {
+            "panes": [
+              "backup"
+            ],
+            "dialogs": [],
+            "maskedInputs": [
+              {
+                "label": "加密密码",
+                "hasValue": true
+              },
+              {
+                "label": "确认密码",
+                "hasValue": true
+              },
+              {
+                "label": "解密密码（加密快照拉取/同步用，可选）",
+                "hasValue": false
+              }
+            ]
+          }
+        },
+        {
+          "file": "lib/docs-demo/cloud-sync-zh/008.png",
+          "state": "push-preview",
+          "atSeconds": 11,
+          "holdSeconds": 1.5,
+          "sha256": "6a0896622c37062d530dcda81a927abf53ebce36dd97e024400ba005bf3f502a",
+          "observed": {
+            "panes": [
+              "backup"
+            ],
+            "dialogs": [
+              "确认推送"
+            ],
+            "maskedInputs": [
+              {
+                "label": "加密密码",
+                "hasValue": true
+              },
+              {
+                "label": "确认密码",
+                "hasValue": true
+              },
+              {
+                "label": "解密密码（加密快照拉取/同步用，可选）",
+                "hasValue": false
+              }
+            ]
+          }
+        },
+        {
+          "file": "lib/docs-demo/cloud-sync-zh/009.png",
+          "state": "merge-conflict",
+          "atSeconds": 12.5,
+          "holdSeconds": 1.5,
+          "sha256": "1e94d577cc4814f59aa3f6e830d15da8440b1b866a43229ba4d8dae21be3a7ae",
+          "observed": {
+            "panes": [
+              "backup"
+            ],
+            "dialogs": [
+              "远程合并"
+            ],
+            "maskedInputs": [
+              {
+                "label": "加密密码",
+                "hasValue": true
+              },
+              {
+                "label": "确认密码",
+                "hasValue": true
+              },
+              {
+                "label": "解密密码（加密快照拉取/同步用，可选）",
+                "hasValue": false
+              }
+            ]
+          }
+        },
+        {
+          "file": "lib/docs-demo/cloud-sync-zh/010.png",
+          "state": "merge-choice",
+          "atSeconds": 14,
+          "holdSeconds": 1.5,
+          "sha256": "7b73785cf994ec57e5899bf25eed78bb0468ef61d545d9b4f006bb633a8ac83d",
+          "observed": {
+            "panes": [
+              "backup"
+            ],
+            "dialogs": [
+              "远程合并"
+            ],
+            "maskedInputs": [
+              {
+                "label": "加密密码",
+                "hasValue": true
+              },
+              {
+                "label": "确认密码",
+                "hasValue": true
+              },
+              {
+                "label": "解密密码（加密快照拉取/同步用，可选）",
+                "hasValue": false
+              }
+            ]
+          }
+        }
+      ],
+      "actions": [
+        {
+          "kind": "click",
+          "description": "Navigate cloud",
+          "target": "云端同步",
+          "atSeconds": 0,
+          "rect": {
+            "x": 114,
+            "y": 64,
+            "width": 68,
+            "height": 24
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Open Git configuration",
+          "target": "配置",
+          "atSeconds": 1.5,
+          "rect": {
+            "x": 45,
+            "y": 266.03125,
+            "width": 46,
+            "height": 28
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Open WebDAV configuration",
+          "target": "配置",
+          "atSeconds": 2.75,
+          "rect": {
+            "x": 45,
+            "y": 387.1875,
+            "width": 46,
+            "height": 28
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Open S3 configuration",
+          "target": "配置",
+          "atSeconds": 4,
+          "rect": {
+            "x": 45,
+            "y": 301.09375,
+            "width": 46,
+            "height": 28
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Open Gist configuration",
+          "target": "配置",
+          "atSeconds": 5.25,
+          "rect": {
+            "x": 45,
+            "y": 450.125,
+            "width": 46,
+            "height": 28
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Expand Git channel details",
+          "target": "展开通道详情",
+          "atSeconds": 6.5,
+          "rect": {
+            "x": 897,
+            "y": 271.03125,
+            "width": 18,
+            "height": 18
+          }
+        },
+        {
+          "kind": "fill",
+          "description": "Type synthetic encryption password",
+          "atSeconds": 8
+        },
+        {
+          "kind": "fill",
+          "description": "Confirm synthetic encryption password",
+          "atSeconds": 9.5
+        },
+        {
+          "kind": "click",
+          "description": "Open push preview",
+          "target": "推送到远端",
+          "atSeconds": 11,
+          "rect": {
+            "x": 484,
+            "y": 375.03125,
+            "width": 431,
+            "height": 28
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Open synthetic merge conflict",
+          "target": "从远端合并到本机",
+          "atSeconds": 12.5,
+          "rect": {
+            "x": 45,
+            "y": 375.03125,
+            "width": 431,
+            "height": 28
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Choose local conflict draft; do not apply",
+          "target": "采用本地",
+          "atSeconds": 14,
+          "rect": {
+            "x": 88,
+            "y": 370.75,
+            "width": 62,
+            "height": 24
+          }
+        }
+      ],
+      "events": [
+        {
+          "kind": "click",
+          "atSeconds": 0,
+          "tag": "button",
+          "target": "云端同步",
+          "role": "tab",
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 1.5,
+          "tag": "button",
+          "target": "配置",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 2.75,
+          "tag": "button",
+          "target": "配置",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 4,
+          "tag": "button",
+          "target": "配置",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 5.25,
+          "tag": "button",
+          "target": "配置",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 6.5,
+          "tag": "button",
+          "target": "展开通道详情",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 9.5,
+          "tag": "input",
+          "target": "加密密码",
+          "role": null,
+          "inputType": "password"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 9.5,
+          "tag": "input",
+          "target": "确认密码",
+          "role": null,
+          "inputType": "password"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 11,
+          "tag": "button",
+          "target": "推送到远端",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 12.5,
+          "tag": "button",
+          "target": "从远端合并到本机",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 14,
+          "tag": "button",
+          "target": "采用本地",
+          "role": null,
+          "inputType": "button"
+        }
+      ],
+      "fixtureCalls": [
+        "cloud:history",
+        "cloud:status",
+        "cloud:snapshotsList",
+        "cloud:githubValidate",
+        "cloud:githubListRepositories",
+        "cloud:saveUiPrefs",
+        "cloud:saveUiPrefs",
+        "cloud:saveUiPrefs",
+        "cloud:saveSelection",
+        "cloud:saveUiPrefs",
+        "cloud:snapshotsList",
+        "cloud:saveSelection",
+        "cloud:pushPreview",
+        "cloud:mergePreview"
+      ],
+      "ffprobe": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "codec_name": "gif",
+            "width": 960,
+            "height": 740,
+            "nb_read_frames": "124"
+          }
+        ],
+        "format": {
+          "duration": "15.510000",
+          "size": "367453"
+        }
+      }
+    },
+    {
+      "file": "docs/media/security-history-zh.gif",
+      "locale": "zh",
+      "scenario": "security-history",
+      "durationSeconds": 11.25,
+      "bytes": 123098,
+      "sha256": "19c6e752afbdc1cc720e845d18ba90cdb6235b358b1390920a061ac54957b9e1",
+      "sourceFrameCount": 8,
+      "encodedFrameCount": 90,
+      "frames": [
+        {
+          "file": "lib/docs-demo/security-history-zh/000.png",
+          "state": "health",
+          "atSeconds": 0,
+          "holdSeconds": 1.5,
+          "sha256": "d8eb3917996ff6ea40d92e493deae2979766cc3bf32bc2d7af34da817e1c9eaf",
+          "observed": {
+            "panes": [
+              "security",
+              "security"
+            ],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/security-history-zh/001.png",
+          "state": "health-filter",
+          "atSeconds": 1.5,
+          "holdSeconds": 1.5,
+          "sha256": "5df5cbb6b501bfff0e177c1613a0dbd2f91b9c6052cf3d9f8a25a8913c625945",
+          "observed": {
+            "panes": [
+              "entries",
+              "entries",
+              "entries"
+            ],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/security-history-zh/002.png",
+          "state": "audit",
+          "atSeconds": 3,
+          "holdSeconds": 1.5,
+          "sha256": "efe727d9cf5ebfa971360af020dbaea3f54e9cf2fad753439fcd34c1a9152309",
+          "observed": {
+            "panes": [
+              "audit"
+            ],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/security-history-zh/003.png",
+          "state": "audit-filter",
+          "atSeconds": 4.5,
+          "holdSeconds": 1.25,
+          "sha256": "1c580a2347f73a04428e82cdad363b351bfee2dd765e47b7ccbda5acb28241e7",
+          "observed": {
+            "panes": [
+              "audit"
+            ],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/security-history-zh/004.png",
+          "state": "trash",
+          "atSeconds": 5.75,
+          "holdSeconds": 1.25,
+          "sha256": "6e8e746de271622ec17ca29523856a423d759cf089306eb29f4a37a53f0ec16a",
+          "observed": {
+            "panes": [
+              "trash"
+            ],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/security-history-zh/005.png",
+          "state": "restored",
+          "atSeconds": 7,
+          "holdSeconds": 1.25,
+          "sha256": "69823dde735fde899647216697b6a76c11d3b78610e19a9085fdd595187423d8",
+          "observed": {
+            "panes": [
+              "trash"
+            ],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/security-history-zh/006.png",
+          "state": "purge-confirm",
+          "atSeconds": 8.25,
+          "holdSeconds": 1.5,
+          "sha256": "9d10507721be246786bc1fca54fd3ada9baaf84a80141e2b251cc2dc64b8057a",
+          "observed": {
+            "panes": [
+              "trash"
+            ],
+            "dialogs": [
+              "确认永久删除「demo-purge」？此操作不可撤销。取消确认"
+            ],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/security-history-zh/007.png",
+          "state": "purge-cancelled",
+          "atSeconds": 9.75,
+          "holdSeconds": 1.5,
+          "sha256": "4c0967fd49336c95788cd5b94151472c328488d9c3d48f3b26ee780b767d44d7",
+          "observed": {
+            "panes": [
+              "trash"
+            ],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        }
+      ],
+      "actions": [
+        {
+          "kind": "click",
+          "description": "Open command palette",
+          "target": "命令面板",
+          "atSeconds": 0,
+          "rect": {
+            "x": 828,
+            "y": 62,
+            "width": 28,
+            "height": 28
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Open security",
+          "target": "安全检查",
+          "atSeconds": 0,
+          "rect": {
+            "x": 245,
+            "y": 156,
+            "width": 470,
+            "height": 32
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Filter by weak-password finding",
+          "target": "弱密码: 1",
+          "atSeconds": 1.5,
+          "rect": {
+            "x": 29,
+            "y": 324,
+            "width": 49.5,
+            "height": 24
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Open command palette",
+          "target": "命令面板",
+          "atSeconds": 3,
+          "rect": {
+            "x": 828,
+            "y": 62,
+            "width": 28,
+            "height": 28
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Open audit",
+          "target": "活动",
+          "atSeconds": 3,
+          "rect": {
+            "x": 245,
+            "y": 156,
+            "width": 470,
+            "height": 32
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Close task",
+          "target": "关闭",
+          "atSeconds": 5.75,
+          "rect": {
+            "x": 920,
+            "y": 105.5,
+            "width": 28,
+            "height": 28
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Open command palette",
+          "target": "命令面板",
+          "atSeconds": 5.75,
+          "rect": {
+            "x": 828,
+            "y": 62,
+            "width": 28,
+            "height": 28
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Open trash",
+          "target": "回收站",
+          "atSeconds": 5.75,
+          "rect": {
+            "x": 245,
+            "y": 156,
+            "width": 470,
+            "height": 32
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Restore synthetic trashed entry",
+          "target": "恢复",
+          "atSeconds": 7,
+          "rect": {
+            "x": 821,
+            "y": 173.5,
+            "width": 42,
+            "height": 24
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Open permanent-delete confirmation",
+          "target": "永久删除",
+          "atSeconds": 8.25,
+          "rect": {
+            "x": 869,
+            "y": 173.5,
+            "width": 66,
+            "height": 24
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Cancel permanent deletion",
+          "target": "取消",
+          "atSeconds": 9.75,
+          "rect": {
+            "x": 571,
+            "y": 432.125,
+            "width": 47,
+            "height": 28
+          }
+        }
+      ],
+      "events": [
+        {
+          "kind": "click",
+          "atSeconds": 0,
+          "tag": "button",
+          "target": "命令面板",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 0,
+          "tag": "input",
+          "target": "搜索页面和操作…",
+          "role": "combobox",
+          "inputType": null
+        },
+        {
+          "kind": "click",
+          "atSeconds": 0,
+          "tag": "button",
+          "target": "安全检查",
+          "role": "option",
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 1.5,
+          "tag": "button",
+          "target": "弱密码: 1",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 3,
+          "tag": "button",
+          "target": "命令面板",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 3,
+          "tag": "input",
+          "target": "搜索页面和操作…",
+          "role": "combobox",
+          "inputType": null
+        },
+        {
+          "kind": "click",
+          "atSeconds": 3,
+          "tag": "button",
+          "target": "活动",
+          "role": "option",
+          "inputType": "button"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 4.5,
+          "tag": "select",
+          "target": "按操作类型筛选",
+          "role": null,
+          "inputType": null,
+          "selectedOption": "变更"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 5.75,
+          "tag": "button",
+          "target": "关闭",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 5.75,
+          "tag": "button",
+          "target": "命令面板",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 5.75,
+          "tag": "input",
+          "target": "搜索页面和操作…",
+          "role": "combobox",
+          "inputType": null
+        },
+        {
+          "kind": "click",
+          "atSeconds": 5.75,
+          "tag": "button",
+          "target": "回收站",
+          "role": "option",
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 7,
+          "tag": "button",
+          "target": "恢复",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 8.25,
+          "tag": "button",
+          "target": "永久删除",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 9.75,
+          "tag": "button",
+          "target": "取消",
+          "role": null,
+          "inputType": "button"
+        }
+      ],
+      "fixtureCalls": [],
+      "ffprobe": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "codec_name": "gif",
+            "width": 960,
+            "height": 740,
+            "nb_read_frames": "90"
+          }
+        ],
+        "format": {
+          "duration": "11.260000",
+          "size": "123098"
+        }
+      }
+    },
+    {
+      "file": "docs/media/settings-sessions-zh.gif",
+      "locale": "zh",
+      "scenario": "settings-sessions",
+      "durationSeconds": 11.75,
+      "bytes": 209447,
+      "sha256": "59f716549d8d0467e9e4b476a313aa42da71635ff150b6558e20056abd79d0be",
+      "sourceFrameCount": 9,
+      "encodedFrameCount": 94,
+      "frames": [
+        {
+          "file": "lib/docs-demo/settings-sessions-zh/000.png",
+          "state": "settings-vault",
+          "atSeconds": 0,
+          "holdSeconds": 1.25,
+          "sha256": "92040976d01f159bea5232f07981f262253027404852cc6bd5b4bda0e346f084",
+          "observed": {
+            "panes": [
+              "permissions"
+            ],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/settings-sessions-zh/001.png",
+          "state": "access-autolock",
+          "atSeconds": 1.25,
+          "holdSeconds": 1.25,
+          "sha256": "89ea3ed02463401eb1726ca142736ad519a8d69e15394bf075d219907b89074f",
+          "observed": {
+            "panes": [
+              "permissions"
+            ],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/settings-sessions-zh/002.png",
+          "state": "tool-profile",
+          "atSeconds": 2.5,
+          "holdSeconds": 1.25,
+          "sha256": "806295b5c63f595eacf35fca430a0e1341449ffb529608b25cce8d26bc4b2a79",
+          "observed": {
+            "panes": [
+              "permissions"
+            ],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/settings-sessions-zh/003.png",
+          "state": "vault-management",
+          "atSeconds": 3.75,
+          "holdSeconds": 1.25,
+          "sha256": "0cb7eb0191675f61fc92f58d18d6565f4fddcb9acadf8d7fae8973578eefbb1b",
+          "observed": {
+            "panes": [
+              "permissions"
+            ],
+            "dialogs": [
+              "输入内容保险库的新名称 (demo-vault)取消确认"
+            ],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/settings-sessions-zh/004.png",
+          "state": "recovery-confirm",
+          "atSeconds": 5,
+          "holdSeconds": 1.25,
+          "sha256": "50695459aa64124b03e23c08c8c3ea2f9f2d2a08cbcd0840afbfc4b0affbbb13",
+          "observed": {
+            "panes": [
+              "security",
+              "security"
+            ],
+            "dialogs": [
+              "确认生成一次性恢复码？仅在生成时显示一次（请妥善保存,如打印备份）;只保存其哈希。取消确认"
+            ],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/settings-sessions-zh/005.png",
+          "state": "sessions",
+          "atSeconds": 6.25,
+          "holdSeconds": 1.25,
+          "sha256": "66dc96e2b07a2b1fc3e9e0a85b7e89ae0375c033e71b31319f0ce16f701bec25",
+          "observed": {
+            "panes": [
+              "sessions"
+            ],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/settings-sessions-zh/006.png",
+          "state": "session-window",
+          "atSeconds": 7.5,
+          "holdSeconds": 1.5,
+          "sha256": "5b74bdb1003a55ddb0b5f5e98a8e11a9b925858aafdb706e59eb323015a0a699",
+          "observed": {
+            "panes": [
+              "sessions"
+            ],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/settings-sessions-zh/007.png",
+          "state": "session-saved",
+          "atSeconds": 9,
+          "holdSeconds": 1.5,
+          "sha256": "e26d2fc437b6062f2e4bb00ed8328c1f7296cdbee9a87465c04b03a4d319e325",
+          "observed": {
+            "panes": [
+              "sessions"
+            ],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/settings-sessions-zh/008.png",
+          "state": "session-closed",
+          "atSeconds": 10.5,
+          "holdSeconds": 1.25,
+          "sha256": "ce7c72d4b34c13c5fee4e4c1e3537d6d76ec5323f1ef89e574ae072ba361100c",
+          "observed": {
+            "panes": [
+              "sessions"
+            ],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        }
+      ],
+      "actions": [
+        {
+          "kind": "click",
+          "description": "Navigate settings",
+          "target": "设置",
+          "atSeconds": 0,
+          "rect": {
+            "x": 184,
+            "y": 64,
+            "width": 44,
+            "height": 24
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Open vault rename prompt",
+          "target": "重命名保险库",
+          "atSeconds": 3.75,
+          "rect": {
+            "x": 157,
+            "y": 182.5,
+            "width": 90,
+            "height": 24
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Cancel vault rename",
+          "target": "取消",
+          "atSeconds": 5,
+          "rect": {
+            "x": 571,
+            "y": 448.125,
+            "width": 47,
+            "height": 28
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Open command palette",
+          "target": "命令面板",
+          "atSeconds": 5,
+          "rect": {
+            "x": 828,
+            "y": 62,
+            "width": 28,
+            "height": 28
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Open security",
+          "target": "安全检查",
+          "atSeconds": 5,
+          "rect": {
+            "x": 245,
+            "y": 156,
+            "width": 470,
+            "height": 32
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Open recovery-code confirmation",
+          "target": "🛟 生成恢复码",
+          "atSeconds": 5,
+          "rect": {
+            "x": 552.078125,
+            "y": 499,
+            "width": 100.03125,
+            "height": 24.796875
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Cancel recovery generation",
+          "target": "取消",
+          "atSeconds": 6.25,
+          "rect": {
+            "x": 571,
+            "y": 441.5,
+            "width": 47,
+            "height": 28
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Open command palette",
+          "target": "命令面板",
+          "atSeconds": 6.25,
+          "rect": {
+            "x": 828,
+            "y": 62,
+            "width": 28,
+            "height": 28
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Open sessions",
+          "target": "会话",
+          "atSeconds": 6.25,
+          "rect": {
+            "x": 245,
+            "y": 156,
+            "width": 470,
+            "height": 32
+          }
+        },
+        {
+          "kind": "fill",
+          "description": "Enter example.com",
+          "atSeconds": 7.5
+        },
+        {
+          "kind": "click",
+          "description": "Illustrative login-window action",
+          "target": "🌐 打开登录窗口",
+          "atSeconds": 7.5,
+          "rect": {
+            "x": 818.96875,
+            "y": 216.09375,
+            "width": 112.03125,
+            "height": 24.796875
+          }
+        },
+        {
+          "kind": "fill",
+          "description": "Name synthetic session",
+          "atSeconds": 9
+        },
+        {
+          "kind": "click",
+          "description": "Illustrative collect and save",
+          "target": "收集并保存",
+          "atSeconds": 9,
+          "rect": {
+            "x": 777,
+            "y": 329.5,
+            "width": 80,
+            "height": 25
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Close synthetic window record",
+          "target": "关闭窗口",
+          "atSeconds": 10.5,
+          "rect": {
+            "x": 863,
+            "y": 329.5,
+            "width": 66,
+            "height": 25
+          }
+        }
+      ],
+      "events": [
+        {
+          "kind": "click",
+          "atSeconds": 0,
+          "tag": "button",
+          "target": "设置",
+          "role": "tab",
+          "inputType": "button"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 1.25,
+          "tag": "select",
+          "target": "访问模式只读写入前询问自动读写",
+          "role": null,
+          "inputType": null,
+          "selectedOption": "自动读写"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 1.25,
+          "tag": "select",
+          "target": "自动锁定永不1 分钟5 分钟15 分钟30 分钟1 小时",
+          "role": null,
+          "inputType": null,
+          "selectedOption": "1 分钟"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 2.5,
+          "tag": "select",
+          "target": "基础(推荐)标准完整自定义…",
+          "role": null,
+          "inputType": null,
+          "selectedOption": "自定义…"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 3.75,
+          "tag": "button",
+          "target": "重命名保险库",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 5,
+          "tag": "button",
+          "target": "取消",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 5,
+          "tag": "button",
+          "target": "命令面板",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 5,
+          "tag": "input",
+          "target": "搜索页面和操作…",
+          "role": "combobox",
+          "inputType": null
+        },
+        {
+          "kind": "click",
+          "atSeconds": 5,
+          "tag": "button",
+          "target": "安全检查",
+          "role": "option",
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 5,
+          "tag": "button",
+          "target": "🛟 生成恢复码",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 6.25,
+          "tag": "button",
+          "target": "取消",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 6.25,
+          "tag": "button",
+          "target": "命令面板",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 6.25,
+          "tag": "input",
+          "target": "搜索页面和操作…",
+          "role": "combobox",
+          "inputType": null
+        },
+        {
+          "kind": "click",
+          "atSeconds": 6.25,
+          "tag": "button",
+          "target": "会话",
+          "role": "option",
+          "inputType": "button"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 7.5,
+          "tag": "input",
+          "target": "要打开的网站地址:",
+          "role": null,
+          "inputType": "text"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 7.5,
+          "tag": "button",
+          "target": "🌐 打开登录窗口",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 9,
+          "tag": "input",
+          "target": "",
+          "role": null,
+          "inputType": "text"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 9,
+          "tag": "button",
+          "target": "收集并保存",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 10.5,
+          "tag": "button",
+          "target": "关闭窗口",
+          "role": null,
+          "inputType": "button"
+        }
+      ],
+      "fixtureCalls": [],
+      "ffprobe": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "codec_name": "gif",
+            "width": 960,
+            "height": 740,
+            "nb_read_frames": "94"
+          }
+        ],
+        "format": {
+          "duration": "11.760000",
+          "size": "209447"
+        }
+      }
+    },
+    {
+      "file": "docs/media/overview-en.gif",
+      "locale": "en",
+      "scenario": "overview",
+      "durationSeconds": 10,
+      "bytes": 205686,
+      "sha256": "097d3c0c273ea76633cd728cbcacbf6022971105d647abd4e1c636e4ef52c266",
+      "sourceFrameCount": 8,
+      "encodedFrameCount": 80,
+      "frames": [
+        {
+          "file": "lib/docs-demo/overview-en/000.png",
+          "state": "home",
+          "atSeconds": 0,
+          "holdSeconds": 1.25,
+          "sha256": "ee1565fef5104dba521f313244f54cbbb0dcb0db1b5ec17a694ab3d5604177e0",
+          "observed": {
+            "panes": [],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/overview-en/001.png",
+          "state": "command-palette",
+          "atSeconds": 1.25,
+          "holdSeconds": 1.25,
+          "sha256": "157f926f3b2738e2c7272ec253c45e5884d3fd896e8f331ae87a4db5e93be85b",
+          "observed": {
+            "panes": [],
+            "dialogs": [
+              "Command palette"
+            ],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/overview-en/002.png",
+          "state": "command-filter",
+          "atSeconds": 2.5,
+          "holdSeconds": 1.25,
+          "sha256": "cf74b64701b8778308bbbe36b50be31add62687ce4a2db46509fa00b91abe95c",
+          "observed": {
+            "panes": [],
+            "dialogs": [
+              "Command palette"
+            ],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/overview-en/003.png",
+          "state": "settings-nav",
+          "atSeconds": 3.75,
+          "holdSeconds": 1.25,
+          "sha256": "45b310d31f3fdc82b05415e2a12e9f5d74a97895d8092e03e8676cdcbeb7d90e",
+          "observed": {
+            "panes": [
+              "permissions"
+            ],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/overview-en/004.png",
+          "state": "about",
+          "atSeconds": 5,
+          "holdSeconds": 1.25,
+          "sha256": "b230d18d1165f4cb38f80969894055db7bca185b65f34d032419aa0d6857f405",
+          "observed": {
+            "panes": [],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/overview-en/005.png",
+          "state": "recent-activity",
+          "atSeconds": 6.25,
+          "holdSeconds": 1.25,
+          "sha256": "2f733fc4f046608f2a26cadaa9c5e61329ff471df9fbc34008f487fdee63ba73",
+          "observed": {
+            "panes": [],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/overview-en/006.png",
+          "state": "entries-nav",
+          "atSeconds": 7.5,
+          "holdSeconds": 1.25,
+          "sha256": "5ede2299f569b19d787d5ddc9b88de4fc77f07781f82e7e37973857e17e20727",
+          "observed": {
+            "panes": [
+              "entries",
+              "entries",
+              "entries"
+            ],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/overview-en/007.png",
+          "state": "home-return",
+          "atSeconds": 8.75,
+          "holdSeconds": 1.25,
+          "sha256": "87a3f170f07c0c1f16e79d7ead2f374a28c3d2b80469f4c2eb2e14f6ed28753b",
+          "observed": {
+            "panes": [],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        }
+      ],
+      "actions": [
+        {
+          "kind": "click",
+          "description": "Open command palette",
+          "target": "Command palette",
+          "atSeconds": 1.25,
+          "rect": {
+            "x": 828,
+            "y": 62,
+            "width": 28,
+            "height": 28
+          }
+        },
+        {
+          "kind": "fill",
+          "description": "Filter command palette",
+          "atSeconds": 2.5
+        },
+        {
+          "kind": "click",
+          "description": "Select Settings",
+          "target": "Settings",
+          "atSeconds": 3.75,
+          "rect": {
+            "x": 245,
+            "y": 156,
+            "width": 470,
+            "height": 32
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Navigate home",
+          "target": "Home",
+          "atSeconds": 5,
+          "rect": {
+            "x": 10,
+            "y": 64,
+            "width": 54.96875,
+            "height": 24
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Open About",
+          "target": "About",
+          "atSeconds": 5,
+          "rect": {
+            "x": 924,
+            "y": 62,
+            "width": 28,
+            "height": 28
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Close task",
+          "target": "Close",
+          "atSeconds": 6.25,
+          "rect": {
+            "x": 920,
+            "y": 105.5,
+            "width": 28,
+            "height": 28
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Open recent activity",
+          "target": "Recent activity",
+          "atSeconds": 6.25,
+          "rect": {
+            "x": 860,
+            "y": 62,
+            "width": 28,
+            "height": 28
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Close task",
+          "target": "Close",
+          "atSeconds": 7.5,
+          "rect": {
+            "x": 920,
+            "y": 105.5,
+            "width": 28,
+            "height": 28
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Navigate entries",
+          "target": "Passwords",
+          "atSeconds": 7.5,
+          "rect": {
+            "x": 68.515625,
+            "y": 64,
+            "width": 79.390625,
+            "height": 24
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Navigate home",
+          "target": "Home",
+          "atSeconds": 8.75,
+          "rect": {
+            "x": 10,
+            "y": 64,
+            "width": 54.96875,
+            "height": 24
+          }
+        }
+      ],
+      "events": [
+        {
+          "kind": "click",
+          "atSeconds": 1.25,
+          "tag": "button",
+          "target": "Command palette",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 3.75,
+          "tag": "input",
+          "target": "Search pages and actions…",
+          "role": "combobox",
+          "inputType": null
+        },
+        {
+          "kind": "click",
+          "atSeconds": 3.75,
+          "tag": "button",
+          "target": "Settings",
+          "role": "option",
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 5,
+          "tag": "button",
+          "target": "Home",
+          "role": "tab",
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 5,
+          "tag": "button",
+          "target": "About",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 6.25,
+          "tag": "button",
+          "target": "Close",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 6.25,
+          "tag": "button",
+          "target": "Recent activity",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 7.5,
+          "tag": "button",
+          "target": "Close",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 7.5,
+          "tag": "button",
+          "target": "Passwords",
+          "role": "tab",
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 8.75,
+          "tag": "button",
+          "target": "Home",
+          "role": "tab",
+          "inputType": "button"
+        }
+      ],
+      "fixtureCalls": [],
+      "ffprobe": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "codec_name": "gif",
+            "width": 960,
+            "height": 740,
+            "nb_read_frames": "80"
+          }
+        ],
+        "format": {
+          "duration": "10.010000",
+          "size": "205686"
+        }
+      }
+    },
+    {
+      "file": "docs/media/credentials-en.gif",
+      "locale": "en",
+      "scenario": "credentials",
+      "durationSeconds": 11,
+      "bytes": 139394,
+      "sha256": "d8b764beb87a22fe5a8180d7491c3f566955cf507de906d68b76b66361edaf9e",
+      "sourceFrameCount": 8,
+      "encodedFrameCount": 88,
+      "frames": [
+        {
+          "file": "lib/docs-demo/credentials-en/000.png",
+          "state": "entries",
+          "atSeconds": 0,
+          "holdSeconds": 1.25,
+          "sha256": "5c881a12872bcf60f10d32735ab817e8c65b69ed3c8b88b7d366417dfe371ac9",
+          "observed": {
+            "panes": [
+              "entries",
+              "entries",
+              "entries"
+            ],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/credentials-en/001.png",
+          "state": "search",
+          "atSeconds": 1.25,
+          "holdSeconds": 1.25,
+          "sha256": "1f8e8131511b4dcead9d3e588829807d6ba79411aa493ba7db446b839a9ca81d",
+          "observed": {
+            "panes": [
+              "entries",
+              "entries",
+              "entries"
+            ],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/credentials-en/002.png",
+          "state": "type-filter",
+          "atSeconds": 2.5,
+          "holdSeconds": 1.25,
+          "sha256": "63bb8d635f6c6b0a38ac674fecb6884f881c40e934483026ceb933f15a1154e3",
+          "observed": {
+            "panes": [
+              "entries",
+              "entries",
+              "entries"
+            ],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/credentials-en/003.png",
+          "state": "ssh-password",
+          "atSeconds": 3.75,
+          "holdSeconds": 1.5,
+          "sha256": "95c0c545fc39af37b766dcea5e1fd6024f67fcc6dfe89fa71dab9c06835b49db",
+          "observed": {
+            "panes": [],
+            "dialogs": [],
+            "maskedInputs": [
+              {
+                "label": "Password",
+                "hasValue": true
+              },
+              {
+                "label": "OTP secret",
+                "hasValue": false
+              }
+            ]
+          }
+        },
+        {
+          "file": "lib/docs-demo/credentials-en/004.png",
+          "state": "ssh-certificate",
+          "atSeconds": 5.25,
+          "holdSeconds": 1.5,
+          "sha256": "149e10430846257a2ed8db8dcfb55a98431410b472807aa7bb16e31a11b9825d",
+          "observed": {
+            "panes": [],
+            "dialogs": [],
+            "maskedInputs": [
+              {
+                "label": "Key passphrase (optional)",
+                "hasValue": false
+              },
+              {
+                "label": "OTP secret",
+                "hasValue": false
+              }
+            ]
+          }
+        },
+        {
+          "file": "lib/docs-demo/credentials-en/005.png",
+          "state": "totp-template",
+          "atSeconds": 6.75,
+          "holdSeconds": 1.5,
+          "sha256": "289006a4b3578dc1452be1d944b7ea90b953065fac4b8cfbf4f0edfd136382a5",
+          "observed": {
+            "panes": [],
+            "dialogs": [],
+            "maskedInputs": [
+              {
+                "label": "OTP secret",
+                "hasValue": true
+              }
+            ]
+          }
+        },
+        {
+          "file": "lib/docs-demo/credentials-en/006.png",
+          "state": "card-template",
+          "atSeconds": 8.25,
+          "holdSeconds": 1.5,
+          "sha256": "94f79ccdec0eee6d4f689dfd1357f363de2892b30ccb782f12e87bd17cf4af47",
+          "observed": {
+            "panes": [],
+            "dialogs": [],
+            "maskedInputs": [
+              {
+                "label": "Card number",
+                "hasValue": true
+              },
+              {
+                "label": "CVV",
+                "hasValue": true
+              },
+              {
+                "label": "OTP secret",
+                "hasValue": false
+              }
+            ]
+          }
+        },
+        {
+          "file": "lib/docs-demo/credentials-en/007.png",
+          "state": "editor-cancelled",
+          "atSeconds": 9.75,
+          "holdSeconds": 1.25,
+          "sha256": "cbf5c2c486baa2ea4cbe60fc17a53fb0f903174afd7483bc6c031ec35a5c7637",
+          "observed": {
+            "panes": [
+              "entries",
+              "entries",
+              "entries"
+            ],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        }
+      ],
+      "actions": [
+        {
+          "kind": "click",
+          "description": "Navigate entries",
+          "target": "Passwords",
+          "atSeconds": 0,
+          "rect": {
+            "x": 68.515625,
+            "y": 64,
+            "width": 79.390625,
+            "height": 24
+          }
+        },
+        {
+          "kind": "fill",
+          "description": "Search demo-server",
+          "atSeconds": 1.25
+        },
+        {
+          "kind": "fill",
+          "description": "Clear search",
+          "atSeconds": 2.5
+        },
+        {
+          "kind": "click",
+          "description": "Open new credential editor",
+          "target": "+ Add credential",
+          "atSeconds": 3.75,
+          "rect": {
+            "x": 594.015625,
+            "y": 110,
+            "width": 122.40625,
+            "height": 29
+          }
+        },
+        {
+          "kind": "fill",
+          "description": "Enter synthetic title",
+          "atSeconds": 3.75
+        },
+        {
+          "kind": "fill",
+          "description": "Enter documentation-only IP",
+          "atSeconds": 3.75
+        },
+        {
+          "kind": "fill",
+          "description": "Enter demo user",
+          "atSeconds": 3.75
+        },
+        {
+          "kind": "fill",
+          "description": "Enter SSH port",
+          "atSeconds": 3.75
+        },
+        {
+          "kind": "fill",
+          "description": "Enter masked synthetic password",
+          "atSeconds": 3.75
+        },
+        {
+          "kind": "fill",
+          "description": "Type non-functional masked demo sentinel",
+          "atSeconds": 6.75
+        },
+        {
+          "kind": "fill",
+          "description": "Enter all-zero synthetic card",
+          "atSeconds": 8.25
+        },
+        {
+          "kind": "fill",
+          "description": "Enter synthetic CVV",
+          "atSeconds": 8.25
+        },
+        {
+          "kind": "fill",
+          "description": "Enter demo expiry",
+          "atSeconds": 8.25
+        },
+        {
+          "kind": "fill",
+          "description": "Enter demo holder",
+          "atSeconds": 8.25
+        },
+        {
+          "kind": "click",
+          "description": "Cancel draft without saving",
+          "target": "Cancel",
+          "atSeconds": 9.75,
+          "rect": {
+            "x": 12,
+            "y": 107.5,
+            "width": 60.078125,
+            "height": 24
+          }
+        }
+      ],
+      "events": [
+        {
+          "kind": "click",
+          "atSeconds": 0,
+          "tag": "button",
+          "target": "Passwords",
+          "role": "tab",
+          "inputType": "button"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 2.5,
+          "tag": "select",
+          "target": "Kind",
+          "role": null,
+          "inputType": null,
+          "selectedOption": "🖥️ SSH"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 3.75,
+          "tag": "button",
+          "target": "+ Add credential",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 3.75,
+          "tag": "select",
+          "target": "Apply template",
+          "role": null,
+          "inputType": null,
+          "selectedOption": "SSH password"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 3.75,
+          "tag": "input",
+          "target": "Title",
+          "role": null,
+          "inputType": "text"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 3.75,
+          "tag": "input",
+          "target": "Host",
+          "role": null,
+          "inputType": "text"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 3.75,
+          "tag": "input",
+          "target": "Username",
+          "role": null,
+          "inputType": "text"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 3.75,
+          "tag": "input",
+          "target": "Port",
+          "role": null,
+          "inputType": "text"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 5.25,
+          "tag": "select",
+          "target": "Apply template",
+          "role": null,
+          "inputType": null,
+          "selectedOption": "SSH certificate / private key"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 6.75,
+          "tag": "select",
+          "target": "Apply template",
+          "role": null,
+          "inputType": null,
+          "selectedOption": "TOTP / Google Authenticator"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 8.25,
+          "tag": "select",
+          "target": "Apply template",
+          "role": null,
+          "inputType": null,
+          "selectedOption": "Card"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 8.25,
+          "tag": "input",
+          "target": "Card number",
+          "role": null,
+          "inputType": "password"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 8.25,
+          "tag": "input",
+          "target": "CVV",
+          "role": null,
+          "inputType": "password"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 8.25,
+          "tag": "input",
+          "target": "Expiry (MM/YY)",
+          "role": null,
+          "inputType": "text"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 9.75,
+          "tag": "input",
+          "target": "Card holder",
+          "role": null,
+          "inputType": "text"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 9.75,
+          "tag": "button",
+          "target": "Cancel",
+          "role": null,
+          "inputType": "button"
+        }
+      ],
+      "fixtureCalls": [],
+      "ffprobe": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "codec_name": "gif",
+            "width": 960,
+            "height": 740,
+            "nb_read_frames": "88"
+          }
+        ],
+        "format": {
+          "duration": "11.010000",
+          "size": "139394"
+        }
+      }
+    },
+    {
+      "file": "docs/media/transfer-en.gif",
+      "locale": "en",
+      "scenario": "transfer",
+      "durationSeconds": 10.75,
+      "bytes": 177445,
+      "sha256": "0d20c04e30fa6fd394d3dd5725f9f2158aab145e3989a864cdd77b975f385447",
+      "sourceFrameCount": 8,
+      "encodedFrameCount": 86,
+      "frames": [
+        {
+          "file": "lib/docs-demo/transfer-en/000.png",
+          "state": "paste-masked",
+          "atSeconds": 0,
+          "holdSeconds": 1.25,
+          "sha256": "8f7bfd8f329b60a9c049f49567b90ea2692c65ea1f60b4bcc59d550ab6951ec2",
+          "observed": {
+            "panes": [],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/transfer-en/001.png",
+          "state": "preview",
+          "atSeconds": 1.25,
+          "holdSeconds": 1.25,
+          "sha256": "7181b8053be52a72bcafd3f9bcd93115908f1db6b4ad1066534d46a57497ea0e",
+          "observed": {
+            "panes": [],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/transfer-en/002.png",
+          "state": "select",
+          "atSeconds": 2.5,
+          "holdSeconds": 1.25,
+          "sha256": "1d460b574e0e3c1eadb61e2004242d0b0c5af0716f63ec110e0a9b174eecc31f",
+          "observed": {
+            "panes": [],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/transfer-en/003.png",
+          "state": "confirmation",
+          "atSeconds": 3.75,
+          "holdSeconds": 1.25,
+          "sha256": "4e17b8dc83a3e406a5dd386cac73d21838dcc87bbd9f038374ed0ddca79807fc",
+          "observed": {
+            "panes": [],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/transfer-en/004.png",
+          "state": "import-result",
+          "atSeconds": 5,
+          "holdSeconds": 1.25,
+          "sha256": "b33d6a71a140fd6c1eed39591d94f132a23a09a498299c193851c2c55943ccc5",
+          "observed": {
+            "panes": [],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/transfer-en/005.png",
+          "state": "transfer-pane",
+          "atSeconds": 6.25,
+          "holdSeconds": 1.5,
+          "sha256": "f1fad3497a3bcd1a7c434ae6163f7820b8575d7fecb4cbc54b252aba72de3f8d",
+          "observed": {
+            "panes": [
+              "transfer"
+            ],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/transfer-en/006.png",
+          "state": "local-backups",
+          "atSeconds": 7.75,
+          "holdSeconds": 1.5,
+          "sha256": "a59b216222f83d870207893607ab8ff09381eebb9bee1d64e6c0ca0b2ff856e6",
+          "observed": {
+            "panes": [
+              "backup"
+            ],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/transfer-en/007.png",
+          "state": "backup-result",
+          "atSeconds": 9.25,
+          "holdSeconds": 1.5,
+          "sha256": "4fa1c60f9ffdb8fe4174fdbe75276df585dc66872fa598c4a9377d39a56dfd22",
+          "observed": {
+            "panes": [
+              "backup"
+            ],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        }
+      ],
+      "actions": [
+        {
+          "kind": "click",
+          "description": "Open quick import",
+          "target": "Quick import",
+          "atSeconds": 0,
+          "rect": {
+            "x": 125.71875,
+            "y": 156,
+            "width": 117.640625,
+            "height": 28
+          }
+        },
+        {
+          "kind": "fill",
+          "description": "Paste two synthetic lines",
+          "atSeconds": 0
+        },
+        {
+          "kind": "click",
+          "description": "Request synthetic preview",
+          "target": "Preview rows",
+          "atSeconds": 1.25,
+          "rect": {
+            "x": 830.90625,
+            "y": 645.40625,
+            "width": 100.09375,
+            "height": 29.375
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Review selected rows",
+          "target": "Review 1 selected rows",
+          "atSeconds": 3.75,
+          "rect": {
+            "x": 771.4375,
+            "y": 591.0625,
+            "width": 159.5625,
+            "height": 29.375
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Explicitly confirm in-memory import",
+          "target": "Import 1 selected rows",
+          "atSeconds": 5,
+          "rect": {
+            "x": 772.015625,
+            "y": 642.4375,
+            "width": 158.984375,
+            "height": 29.375
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Close task",
+          "target": "Close",
+          "atSeconds": 6.25,
+          "rect": {
+            "x": 920,
+            "y": 105.5,
+            "width": 28,
+            "height": 28
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Open command palette",
+          "target": "Command palette",
+          "atSeconds": 6.25,
+          "rect": {
+            "x": 828,
+            "y": 62,
+            "width": 28,
+            "height": 28
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Open transfer",
+          "target": "Import / export",
+          "atSeconds": 6.25,
+          "rect": {
+            "x": 245,
+            "y": 156,
+            "width": 470,
+            "height": 32
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Close task",
+          "target": "Close",
+          "atSeconds": 7.75,
+          "rect": {
+            "x": 920,
+            "y": 105.5,
+            "width": 28,
+            "height": 28
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Open command palette",
+          "target": "Command palette",
+          "atSeconds": 7.75,
+          "rect": {
+            "x": 828,
+            "y": 62,
+            "width": 28,
+            "height": 28
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Open local",
+          "target": "Local backups",
+          "atSeconds": 7.75,
+          "rect": {
+            "x": 245,
+            "y": 156,
+            "width": 470,
+            "height": 32
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Create synthetic local backup",
+          "target": "Backup now",
+          "atSeconds": 9.25,
+          "rect": {
+            "x": 29,
+            "y": 250.5,
+            "width": 91.828125,
+            "height": 24
+          }
+        }
+      ],
+      "events": [
+        {
+          "kind": "click",
+          "atSeconds": 0,
+          "tag": "button",
+          "target": "Quick import",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 1.25,
+          "tag": "textarea",
+          "target": "Credential lines",
+          "role": null,
+          "inputType": null
+        },
+        {
+          "kind": "click",
+          "atSeconds": 1.25,
+          "tag": "button",
+          "target": "Preview rows",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 3.75,
+          "tag": "button",
+          "target": "Review 1 selected rows",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 5,
+          "tag": "input",
+          "target": "I reviewed the preview and approve importing these 1 selected rows.",
+          "role": null,
+          "inputType": "checkbox",
+          "checked": true
+        },
+        {
+          "kind": "change",
+          "atSeconds": 5,
+          "tag": "input",
+          "target": "I reviewed the preview and approve importing these 1 selected rows.",
+          "role": null,
+          "inputType": "checkbox",
+          "checked": true
+        },
+        {
+          "kind": "click",
+          "atSeconds": 5,
+          "tag": "button",
+          "target": "Import 1 selected rows",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 6.25,
+          "tag": "button",
+          "target": "Close",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 6.25,
+          "tag": "button",
+          "target": "Command palette",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 6.25,
+          "tag": "input",
+          "target": "Search pages and actions…",
+          "role": "combobox",
+          "inputType": null
+        },
+        {
+          "kind": "click",
+          "atSeconds": 6.25,
+          "tag": "button",
+          "target": "Import / export",
+          "role": "option",
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 7.75,
+          "tag": "button",
+          "target": "Close",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 7.75,
+          "tag": "button",
+          "target": "Command palette",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 7.75,
+          "tag": "input",
+          "target": "Search pages and actions…",
+          "role": "combobox",
+          "inputType": null
+        },
+        {
+          "kind": "click",
+          "atSeconds": 7.75,
+          "tag": "button",
+          "target": "Local backups",
+          "role": "option",
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 9.25,
+          "tag": "button",
+          "target": "Backup now",
+          "role": null,
+          "inputType": "button"
+        }
+      ],
+      "fixtureCalls": [],
+      "ffprobe": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "codec_name": "gif",
+            "width": 960,
+            "height": 740,
+            "nb_read_frames": "86"
+          }
+        ],
+        "format": {
+          "duration": "10.760000",
+          "size": "177445"
+        }
+      }
+    },
+    {
+      "file": "docs/media/cloud-sync-en.gif",
+      "locale": "en",
+      "scenario": "cloud-sync",
+      "durationSeconds": 15.5,
+      "bytes": 396298,
+      "sha256": "acf40e024a7827f95ffa02987cd97fa889f7022beab419dbaa1e79dca5b6e271",
+      "sourceFrameCount": 11,
+      "encodedFrameCount": 124,
+      "frames": [
+        {
+          "file": "lib/docs-demo/cloud-sync-en/000.png",
+          "state": "cloud-overview",
+          "atSeconds": 0,
+          "holdSeconds": 1.5,
+          "sha256": "0a5db4cd7a1f157621229482b6034cd16173e9e2e692603d51e9af057bcb2fb8",
+          "observed": {
+            "panes": [
+              "backup"
+            ],
+            "dialogs": [],
+            "maskedInputs": [
+              {
+                "label": "Encryption password",
+                "hasValue": false
+              },
+              {
+                "label": "Confirm password",
+                "hasValue": false
+              },
+              {
+                "label": "Decryption password (for encrypted snapshot pull/sync, optional)",
+                "hasValue": false
+              }
+            ]
+          }
+        },
+        {
+          "file": "lib/docs-demo/cloud-sync-en/001.png",
+          "state": "channel-git",
+          "atSeconds": 1.5,
+          "holdSeconds": 1.25,
+          "sha256": "3aa06d41f23fc4aa674a42de17d397a9939224e64649639476885db2f70822ce",
+          "observed": {
+            "panes": [
+              "backup"
+            ],
+            "dialogs": [
+              "Sync Channel"
+            ],
+            "maskedInputs": [
+              {
+                "label": "Encryption password",
+                "hasValue": false
+              },
+              {
+                "label": "Confirm password",
+                "hasValue": false
+              },
+              {
+                "label": "Decryption password (for encrypted snapshot pull/sync, optional)",
+                "hasValue": false
+              },
+              {
+                "label": "Auth token",
+                "hasValue": false
+              }
+            ]
+          }
+        },
+        {
+          "file": "lib/docs-demo/cloud-sync-en/002.png",
+          "state": "channel-webdav",
+          "atSeconds": 2.75,
+          "holdSeconds": 1.25,
+          "sha256": "4238d7c7ab0e514e133783b6ae006c730d66d738651b6710834e3e989fbb67c7",
+          "observed": {
+            "panes": [
+              "backup"
+            ],
+            "dialogs": [
+              "Sync Channel"
+            ],
+            "maskedInputs": [
+              {
+                "label": "Encryption password",
+                "hasValue": false
+              },
+              {
+                "label": "Confirm password",
+                "hasValue": false
+              },
+              {
+                "label": "Decryption password (for encrypted snapshot pull/sync, optional)",
+                "hasValue": false
+              },
+              {
+                "label": "Password",
+                "hasValue": false
+              }
+            ]
+          }
+        },
+        {
+          "file": "lib/docs-demo/cloud-sync-en/003.png",
+          "state": "channel-s3",
+          "atSeconds": 4,
+          "holdSeconds": 1.25,
+          "sha256": "aef574fdfe84cde49e683f3ea70eea8055c2d0ff49ef2fb1037dac8f44d599ee",
+          "observed": {
+            "panes": [
+              "backup"
+            ],
+            "dialogs": [
+              "Sync Channel"
+            ],
+            "maskedInputs": [
+              {
+                "label": "Encryption password",
+                "hasValue": false
+              },
+              {
+                "label": "Confirm password",
+                "hasValue": false
+              },
+              {
+                "label": "Decryption password (for encrypted snapshot pull/sync, optional)",
+                "hasValue": false
+              },
+              {
+                "label": "Secret AccessKey",
+                "hasValue": false
+              }
+            ]
+          }
+        },
+        {
+          "file": "lib/docs-demo/cloud-sync-en/004.png",
+          "state": "channel-gist",
+          "atSeconds": 5.25,
+          "holdSeconds": 1.25,
+          "sha256": "6f8a46dca40c053a52dcf68f7322aee1ba53b27050bfd6419adf15b4162eb7aa",
+          "observed": {
+            "panes": [
+              "backup"
+            ],
+            "dialogs": [
+              "Sync Channel"
+            ],
+            "maskedInputs": [
+              {
+                "label": "Encryption password",
+                "hasValue": false
+              },
+              {
+                "label": "Confirm password",
+                "hasValue": false
+              },
+              {
+                "label": "Decryption password (for encrypted snapshot pull/sync, optional)",
+                "hasValue": false
+              },
+              {
+                "label": "Gist token",
+                "hasValue": false
+              }
+            ]
+          }
+        },
+        {
+          "file": "lib/docs-demo/cloud-sync-en/005.png",
+          "state": "encryption",
+          "atSeconds": 6.5,
+          "holdSeconds": 1.5,
+          "sha256": "d61e600b9e60b10adf1005299bf712a0a0a494868c4d2caca83a7dbc625d3269",
+          "observed": {
+            "panes": [
+              "backup"
+            ],
+            "dialogs": [],
+            "maskedInputs": [
+              {
+                "label": "Encryption password",
+                "hasValue": false
+              },
+              {
+                "label": "Confirm password",
+                "hasValue": false
+              },
+              {
+                "label": "Decryption password (for encrypted snapshot pull/sync, optional)",
+                "hasValue": false
+              }
+            ]
+          }
+        },
+        {
+          "file": "lib/docs-demo/cloud-sync-en/006.png",
+          "state": "password-mismatch",
+          "atSeconds": 8,
+          "holdSeconds": 1.5,
+          "sha256": "92516712516edd0da7a5d786f4fcb21d717cc14ced1324ce89187d7b84cdd599",
+          "observed": {
+            "panes": [
+              "backup"
+            ],
+            "dialogs": [],
+            "maskedInputs": [
+              {
+                "label": "Encryption password",
+                "hasValue": true
+              },
+              {
+                "label": "Confirm password",
+                "hasValue": false
+              },
+              {
+                "label": "Decryption password (for encrypted snapshot pull/sync, optional)",
+                "hasValue": false
+              }
+            ]
+          }
+        },
+        {
+          "file": "lib/docs-demo/cloud-sync-en/007.png",
+          "state": "password-confirmed",
+          "atSeconds": 9.5,
+          "holdSeconds": 1.5,
+          "sha256": "2249c0767fc34333aa3d37413e7f5c3e9343a7415407a47fc37402d914e5ac93",
+          "observed": {
+            "panes": [
+              "backup"
+            ],
+            "dialogs": [],
+            "maskedInputs": [
+              {
+                "label": "Encryption password",
+                "hasValue": true
+              },
+              {
+                "label": "Confirm password",
+                "hasValue": true
+              },
+              {
+                "label": "Decryption password (for encrypted snapshot pull/sync, optional)",
+                "hasValue": false
+              }
+            ]
+          }
+        },
+        {
+          "file": "lib/docs-demo/cloud-sync-en/008.png",
+          "state": "push-preview",
+          "atSeconds": 11,
+          "holdSeconds": 1.5,
+          "sha256": "37314af50423ad7b879af66576ba78392bb0acc28f6bf2ed36a939941369510a",
+          "observed": {
+            "panes": [
+              "backup"
+            ],
+            "dialogs": [
+              "Confirm Push"
+            ],
+            "maskedInputs": [
+              {
+                "label": "Encryption password",
+                "hasValue": true
+              },
+              {
+                "label": "Confirm password",
+                "hasValue": true
+              },
+              {
+                "label": "Decryption password (for encrypted snapshot pull/sync, optional)",
+                "hasValue": false
+              }
+            ]
+          }
+        },
+        {
+          "file": "lib/docs-demo/cloud-sync-en/009.png",
+          "state": "merge-conflict",
+          "atSeconds": 12.5,
+          "holdSeconds": 1.5,
+          "sha256": "baf512c2c074d57ec28ac209e70028521aed663dbec5a09c0204a6a943214370",
+          "observed": {
+            "panes": [
+              "backup"
+            ],
+            "dialogs": [
+              "Remote merge"
+            ],
+            "maskedInputs": [
+              {
+                "label": "Encryption password",
+                "hasValue": true
+              },
+              {
+                "label": "Confirm password",
+                "hasValue": true
+              },
+              {
+                "label": "Decryption password (for encrypted snapshot pull/sync, optional)",
+                "hasValue": false
+              }
+            ]
+          }
+        },
+        {
+          "file": "lib/docs-demo/cloud-sync-en/010.png",
+          "state": "merge-choice",
+          "atSeconds": 14,
+          "holdSeconds": 1.5,
+          "sha256": "0d67387d33b0c5653bbecf52f40d1f1621bbaf9ae3cc1c5920f633563a1d7201",
+          "observed": {
+            "panes": [
+              "backup"
+            ],
+            "dialogs": [
+              "Remote merge"
+            ],
+            "maskedInputs": [
+              {
+                "label": "Encryption password",
+                "hasValue": true
+              },
+              {
+                "label": "Confirm password",
+                "hasValue": true
+              },
+              {
+                "label": "Decryption password (for encrypted snapshot pull/sync, optional)",
+                "hasValue": false
+              }
+            ]
+          }
+        }
+      ],
+      "actions": [
+        {
+          "kind": "click",
+          "description": "Navigate cloud",
+          "target": "Cloud sync",
+          "atSeconds": 0,
+          "rect": {
+            "x": 149.90625,
+            "y": 64,
+            "width": 82.796875,
+            "height": 24
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Open Git configuration",
+          "target": "Configure",
+          "atSeconds": 1.5,
+          "rect": {
+            "x": 45,
+            "y": 266.03125,
+            "width": 78.703125,
+            "height": 28
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Open WebDAV configuration",
+          "target": "Configure",
+          "atSeconds": 2.75,
+          "rect": {
+            "x": 45,
+            "y": 387.1875,
+            "width": 78.703125,
+            "height": 28
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Open S3 configuration",
+          "target": "Configure",
+          "atSeconds": 4,
+          "rect": {
+            "x": 45,
+            "y": 301.09375,
+            "width": 78.703125,
+            "height": 28
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Open Gist configuration",
+          "target": "Configure",
+          "atSeconds": 5.25,
+          "rect": {
+            "x": 45,
+            "y": 450.125,
+            "width": 78.703125,
+            "height": 28
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Expand Git channel details",
+          "target": "Expand channel details",
+          "atSeconds": 6.5,
+          "rect": {
+            "x": 897,
+            "y": 271.03125,
+            "width": 18,
+            "height": 18
+          }
+        },
+        {
+          "kind": "fill",
+          "description": "Type synthetic encryption password",
+          "atSeconds": 8
+        },
+        {
+          "kind": "fill",
+          "description": "Confirm synthetic encryption password",
+          "atSeconds": 9.5
+        },
+        {
+          "kind": "click",
+          "description": "Open push preview",
+          "target": "Push to remote",
+          "atSeconds": 11,
+          "rect": {
+            "x": 484,
+            "y": 386.03125,
+            "width": 431,
+            "height": 28
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Open synthetic merge conflict",
+          "target": "Merge from remote",
+          "atSeconds": 12.5,
+          "rect": {
+            "x": 45,
+            "y": 386.03125,
+            "width": 431,
+            "height": 28
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Choose local conflict draft; do not apply",
+          "target": "Use local",
+          "atSeconds": 14,
+          "rect": {
+            "x": 88,
+            "y": 370.75,
+            "width": 65.25,
+            "height": 24
+          }
+        }
+      ],
+      "events": [
+        {
+          "kind": "click",
+          "atSeconds": 0,
+          "tag": "button",
+          "target": "Cloud sync",
+          "role": "tab",
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 1.5,
+          "tag": "button",
+          "target": "Configure",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 2.75,
+          "tag": "button",
+          "target": "Configure",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 4,
+          "tag": "button",
+          "target": "Configure",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 5.25,
+          "tag": "button",
+          "target": "Configure",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 6.5,
+          "tag": "button",
+          "target": "Expand channel details",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 9.5,
+          "tag": "input",
+          "target": "Encryption password",
+          "role": null,
+          "inputType": "password"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 9.5,
+          "tag": "input",
+          "target": "Confirm password",
+          "role": null,
+          "inputType": "password"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 11,
+          "tag": "button",
+          "target": "Push to remote",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 12.5,
+          "tag": "button",
+          "target": "Merge from remote",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 14,
+          "tag": "button",
+          "target": "Use local",
+          "role": null,
+          "inputType": "button"
+        }
+      ],
+      "fixtureCalls": [
+        "cloud:history",
+        "cloud:status",
+        "cloud:snapshotsList",
+        "cloud:githubValidate",
+        "cloud:githubListRepositories",
+        "cloud:saveUiPrefs",
+        "cloud:saveUiPrefs",
+        "cloud:saveUiPrefs",
+        "cloud:saveSelection",
+        "cloud:saveUiPrefs",
+        "cloud:snapshotsList",
+        "cloud:saveSelection",
+        "cloud:pushPreview",
+        "cloud:mergePreview"
+      ],
+      "ffprobe": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "codec_name": "gif",
+            "width": 960,
+            "height": 740,
+            "nb_read_frames": "124"
+          }
+        ],
+        "format": {
+          "duration": "15.510000",
+          "size": "396298"
+        }
+      }
+    },
+    {
+      "file": "docs/media/security-history-en.gif",
+      "locale": "en",
+      "scenario": "security-history",
+      "durationSeconds": 11.25,
+      "bytes": 123935,
+      "sha256": "30c2652c9522f383b2b99e8df25779d275818a93b47b18e749f14ebabd510c35",
+      "sourceFrameCount": 8,
+      "encodedFrameCount": 90,
+      "frames": [
+        {
+          "file": "lib/docs-demo/security-history-en/000.png",
+          "state": "health",
+          "atSeconds": 0,
+          "holdSeconds": 1.5,
+          "sha256": "dd1a4b3c82a668d47fd51a0012e34d12e41a6f1238225940f20be758ef96673a",
+          "observed": {
+            "panes": [
+              "security",
+              "security"
+            ],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/security-history-en/001.png",
+          "state": "health-filter",
+          "atSeconds": 1.5,
+          "holdSeconds": 1.5,
+          "sha256": "2622da282392986903365de55f4bfb37ecfdf0b7a6eea0f48256dce60361e30d",
+          "observed": {
+            "panes": [
+              "entries",
+              "entries",
+              "entries"
+            ],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/security-history-en/002.png",
+          "state": "audit",
+          "atSeconds": 3,
+          "holdSeconds": 1.5,
+          "sha256": "c613e6cdb886aa64872d86a404e5c7b3c9cc947f966eaa44893356d279baf730",
+          "observed": {
+            "panes": [
+              "audit"
+            ],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/security-history-en/003.png",
+          "state": "audit-filter",
+          "atSeconds": 4.5,
+          "holdSeconds": 1.25,
+          "sha256": "216bd506bafc22302d52e40cb3aa09c6fb4a31d02e5a29d545c6fde8fedd955e",
+          "observed": {
+            "panes": [
+              "audit"
+            ],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/security-history-en/004.png",
+          "state": "trash",
+          "atSeconds": 5.75,
+          "holdSeconds": 1.25,
+          "sha256": "f1ce440dc251c73f4ce0b3619aa627c45c6479296301ba7dffe05a9b5cb17c19",
+          "observed": {
+            "panes": [
+              "trash"
+            ],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/security-history-en/005.png",
+          "state": "restored",
+          "atSeconds": 7,
+          "holdSeconds": 1.25,
+          "sha256": "ec6bd3233f98bc2d00e2ec57453c1ec0139e0aa4a7e69d2fb77b0b199e539e9b",
+          "observed": {
+            "panes": [
+              "trash"
+            ],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/security-history-en/006.png",
+          "state": "purge-confirm",
+          "atSeconds": 8.25,
+          "holdSeconds": 1.5,
+          "sha256": "c458d9a55446652b57ce72e592baf4edf36a1cb4cc1afa59d0aa6cd720af2592",
+          "observed": {
+            "panes": [
+              "trash"
+            ],
+            "dialogs": [
+              "ConfirmPermanently delete \"demo-purge\"? This cannot be undone.CancelConfirm"
+            ],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/security-history-en/007.png",
+          "state": "purge-cancelled",
+          "atSeconds": 9.75,
+          "holdSeconds": 1.5,
+          "sha256": "19e5e6559f4bcc6532706ddbfc3bfe4379f026771ad3f45973c815e8d92f89d4",
+          "observed": {
+            "panes": [
+              "trash"
+            ],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        }
+      ],
+      "actions": [
+        {
+          "kind": "click",
+          "description": "Open command palette",
+          "target": "Command palette",
+          "atSeconds": 0,
+          "rect": {
+            "x": 828,
+            "y": 62,
+            "width": 28,
+            "height": 28
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Open security",
+          "target": "Security",
+          "atSeconds": 0,
+          "rect": {
+            "x": 245,
+            "y": 156,
+            "width": 470,
+            "height": 32
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Filter by weak-password finding",
+          "target": "weak passwords: 1",
+          "atSeconds": 1.5,
+          "rect": {
+            "x": 29,
+            "y": 324,
+            "width": 106.390625,
+            "height": 24
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Open command palette",
+          "target": "Command palette",
+          "atSeconds": 3,
+          "rect": {
+            "x": 828,
+            "y": 62,
+            "width": 28,
+            "height": 28
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Open audit",
+          "target": "Activity",
+          "atSeconds": 3,
+          "rect": {
+            "x": 245,
+            "y": 156,
+            "width": 470,
+            "height": 32
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Close task",
+          "target": "Close",
+          "atSeconds": 5.75,
+          "rect": {
+            "x": 920,
+            "y": 105.5,
+            "width": 28,
+            "height": 28
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Open command palette",
+          "target": "Command palette",
+          "atSeconds": 5.75,
+          "rect": {
+            "x": 828,
+            "y": 62,
+            "width": 28,
+            "height": 28
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Open trash",
+          "target": "Trash",
+          "atSeconds": 5.75,
+          "rect": {
+            "x": 245,
+            "y": 156,
+            "width": 470,
+            "height": 32
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Restore synthetic trashed entry",
+          "target": "Restore",
+          "atSeconds": 7,
+          "rect": {
+            "x": 736.734375,
+            "y": 173.5,
+            "width": 61.0625,
+            "height": 24
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Open permanent-delete confirmation",
+          "target": "Delete permanently",
+          "atSeconds": 8.25,
+          "rect": {
+            "x": 803.796875,
+            "y": 173.5,
+            "width": 131.203125,
+            "height": 24
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Cancel permanent deletion",
+          "target": "Cancel",
+          "atSeconds": 9.75,
+          "rect": {
+            "x": 533.1875,
+            "y": 432.125,
+            "width": 61.671875,
+            "height": 28
+          }
+        }
+      ],
+      "events": [
+        {
+          "kind": "click",
+          "atSeconds": 0,
+          "tag": "button",
+          "target": "Command palette",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 0,
+          "tag": "input",
+          "target": "Search pages and actions…",
+          "role": "combobox",
+          "inputType": null
+        },
+        {
+          "kind": "click",
+          "atSeconds": 0,
+          "tag": "button",
+          "target": "Security",
+          "role": "option",
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 1.5,
+          "tag": "button",
+          "target": "weak passwords: 1",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 3,
+          "tag": "button",
+          "target": "Command palette",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 3,
+          "tag": "input",
+          "target": "Search pages and actions…",
+          "role": "combobox",
+          "inputType": null
+        },
+        {
+          "kind": "click",
+          "atSeconds": 3,
+          "tag": "button",
+          "target": "Activity",
+          "role": "option",
+          "inputType": "button"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 4.5,
+          "tag": "select",
+          "target": "Filter by action",
+          "role": null,
+          "inputType": null,
+          "selectedOption": "Changes"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 5.75,
+          "tag": "button",
+          "target": "Close",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 5.75,
+          "tag": "button",
+          "target": "Command palette",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 5.75,
+          "tag": "input",
+          "target": "Search pages and actions…",
+          "role": "combobox",
+          "inputType": null
+        },
+        {
+          "kind": "click",
+          "atSeconds": 5.75,
+          "tag": "button",
+          "target": "Trash",
+          "role": "option",
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 7,
+          "tag": "button",
+          "target": "Restore",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 8.25,
+          "tag": "button",
+          "target": "Delete permanently",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 9.75,
+          "tag": "button",
+          "target": "Cancel",
+          "role": null,
+          "inputType": "button"
+        }
+      ],
+      "fixtureCalls": [],
+      "ffprobe": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "codec_name": "gif",
+            "width": 960,
+            "height": 740,
+            "nb_read_frames": "90"
+          }
+        ],
+        "format": {
+          "duration": "11.260000",
+          "size": "123935"
+        }
+      }
+    },
+    {
+      "file": "docs/media/settings-sessions-en.gif",
+      "locale": "en",
+      "scenario": "settings-sessions",
+      "durationSeconds": 11.75,
+      "bytes": 210121,
+      "sha256": "f05a10ed23223990ff799a4de7605b2a66945bd7e7dd9e71e28704d2d04fdc97",
+      "sourceFrameCount": 9,
+      "encodedFrameCount": 94,
+      "frames": [
+        {
+          "file": "lib/docs-demo/settings-sessions-en/000.png",
+          "state": "settings-vault",
+          "atSeconds": 0,
+          "holdSeconds": 1.25,
+          "sha256": "1461966eda223570d740c242f19a6fce6b9e00fab4b5f7b89a141700411196f7",
+          "observed": {
+            "panes": [
+              "permissions"
+            ],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/settings-sessions-en/001.png",
+          "state": "access-autolock",
+          "atSeconds": 1.25,
+          "holdSeconds": 1.25,
+          "sha256": "5576f1b10b0575db52ff9637f533cdac01dd4814bd4e88d085b1aee1ef02522b",
+          "observed": {
+            "panes": [
+              "permissions"
+            ],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/settings-sessions-en/002.png",
+          "state": "tool-profile",
+          "atSeconds": 2.5,
+          "holdSeconds": 1.25,
+          "sha256": "9390e799ffede01cdedbb79fc393b9ac190f506e1dff20e2c6a5b3bf54ed1be1",
+          "observed": {
+            "panes": [
+              "permissions"
+            ],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/settings-sessions-en/003.png",
+          "state": "vault-management",
+          "atSeconds": 3.75,
+          "holdSeconds": 1.25,
+          "sha256": "82f3944fc5eb8d0cfd288d7509235a0d9487667980e139e275132b7170f450af",
+          "observed": {
+            "panes": [
+              "permissions"
+            ],
+            "dialogs": [
+              "Enter a valueNew name for the vault (demo-vault)CancelConfirm"
+            ],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/settings-sessions-en/004.png",
+          "state": "recovery-confirm",
+          "atSeconds": 5,
+          "holdSeconds": 1.25,
+          "sha256": "8608ada04d75511095c17f46cf4868276d27a3bbb95fb6d96fdf08f91a0eccfc",
+          "observed": {
+            "panes": [
+              "security",
+              "security"
+            ],
+            "dialogs": [
+              "ConfirmGenerate a one-time recovery code? It is shown only once (store it safely, e.g. printed); onl"
+            ],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/settings-sessions-en/005.png",
+          "state": "sessions",
+          "atSeconds": 6.25,
+          "holdSeconds": 1.25,
+          "sha256": "2c55623aa0854dff6e2182cc59e927a39742e859f0b3cfb9d6079e638dd1f15c",
+          "observed": {
+            "panes": [
+              "sessions"
+            ],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/settings-sessions-en/006.png",
+          "state": "session-window",
+          "atSeconds": 7.5,
+          "holdSeconds": 1.5,
+          "sha256": "d4a9b870e4f11980fc1d316852c2448b2eed3575c8d276f5c8c9eeeff275583f",
+          "observed": {
+            "panes": [
+              "sessions"
+            ],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/settings-sessions-en/007.png",
+          "state": "session-saved",
+          "atSeconds": 9,
+          "holdSeconds": 1.5,
+          "sha256": "930b2b63c7b1fcfaec13c7cd4d4013305eb9039c31d12dc5aca95f0a629d6bba",
+          "observed": {
+            "panes": [
+              "sessions"
+            ],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        },
+        {
+          "file": "lib/docs-demo/settings-sessions-en/008.png",
+          "state": "session-closed",
+          "atSeconds": 10.5,
+          "holdSeconds": 1.25,
+          "sha256": "788f53bc478198b2eeed55f49985e5a97c2cca1bc65eaacc90a72593c7075f61",
+          "observed": {
+            "panes": [
+              "sessions"
+            ],
+            "dialogs": [],
+            "maskedInputs": []
+          }
+        }
+      ],
+      "actions": [
+        {
+          "kind": "click",
+          "description": "Navigate settings",
+          "target": "Settings",
+          "atSeconds": 0,
+          "rect": {
+            "x": 234.703125,
+            "y": 64,
+            "width": 66.5,
+            "height": 24
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Open vault rename prompt",
+          "target": "Rename vault",
+          "atSeconds": 3.75,
+          "rect": {
+            "x": 157,
+            "y": 182.5,
+            "width": 95.671875,
+            "height": 24
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Cancel vault rename",
+          "target": "Cancel",
+          "atSeconds": 5,
+          "rect": {
+            "x": 533.1875,
+            "y": 448.125,
+            "width": 61.671875,
+            "height": 28
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Open command palette",
+          "target": "Command palette",
+          "atSeconds": 5,
+          "rect": {
+            "x": 828,
+            "y": 62,
+            "width": 28,
+            "height": 28
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Open security",
+          "target": "Security",
+          "atSeconds": 5,
+          "rect": {
+            "x": 245,
+            "y": 156,
+            "width": 470,
+            "height": 32
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Open recovery-code confirmation",
+          "target": "🛟 Generate recovery code",
+          "atSeconds": 5,
+          "rect": {
+            "x": 214.46875,
+            "y": 529.796875,
+            "width": 176.953125,
+            "height": 24.796875
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Cancel recovery generation",
+          "target": "Cancel",
+          "atSeconds": 6.25,
+          "rect": {
+            "x": 533.1875,
+            "y": 441.5,
+            "width": 61.671875,
+            "height": 28
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Open command palette",
+          "target": "Command palette",
+          "atSeconds": 6.25,
+          "rect": {
+            "x": 828,
+            "y": 62,
+            "width": 28,
+            "height": 28
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Open sessions",
+          "target": "Sessions",
+          "atSeconds": 6.25,
+          "rect": {
+            "x": 245,
+            "y": 156,
+            "width": 470,
+            "height": 32
+          }
+        },
+        {
+          "kind": "fill",
+          "description": "Enter example.com",
+          "atSeconds": 7.5
+        },
+        {
+          "kind": "click",
+          "description": "Illustrative login-window action",
+          "target": "🌐 Open login window",
+          "atSeconds": 7.5,
+          "rect": {
+            "x": 778.28125,
+            "y": 234.09375,
+            "width": 152.71875,
+            "height": 24.796875
+          }
+        },
+        {
+          "kind": "fill",
+          "description": "Name synthetic session",
+          "atSeconds": 9
+        },
+        {
+          "kind": "click",
+          "description": "Illustrative collect and save",
+          "target": "Collect & save",
+          "atSeconds": 9,
+          "rect": {
+            "x": 723.28125,
+            "y": 347.5,
+            "width": 102.109375,
+            "height": 25
+          }
+        },
+        {
+          "kind": "click",
+          "description": "Close synthetic window record",
+          "target": "Close window",
+          "atSeconds": 10.5,
+          "rect": {
+            "x": 831.390625,
+            "y": 347.5,
+            "width": 97.609375,
+            "height": 25
+          }
+        }
+      ],
+      "events": [
+        {
+          "kind": "click",
+          "atSeconds": 0,
+          "tag": "button",
+          "target": "Settings",
+          "role": "tab",
+          "inputType": "button"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 1.25,
+          "tag": "select",
+          "target": "Access modeRead-onlyAsk before writingAutomatic read-write",
+          "role": null,
+          "inputType": null,
+          "selectedOption": "Automatic read-write"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 1.25,
+          "tag": "select",
+          "target": "Auto-lock afterNever1 minute5 minutes15 minutes30 minutes1 hour",
+          "role": null,
+          "inputType": null,
+          "selectedOption": "1 minute"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 2.5,
+          "tag": "select",
+          "target": "Basic (recommended)StandardFullCustom…",
+          "role": null,
+          "inputType": null,
+          "selectedOption": "Custom…"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 3.75,
+          "tag": "button",
+          "target": "Rename vault",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 5,
+          "tag": "button",
+          "target": "Cancel",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 5,
+          "tag": "button",
+          "target": "Command palette",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 5,
+          "tag": "input",
+          "target": "Search pages and actions…",
+          "role": "combobox",
+          "inputType": null
+        },
+        {
+          "kind": "click",
+          "atSeconds": 5,
+          "tag": "button",
+          "target": "Security",
+          "role": "option",
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 5,
+          "tag": "button",
+          "target": "🛟 Generate recovery code",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 6.25,
+          "tag": "button",
+          "target": "Cancel",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 6.25,
+          "tag": "button",
+          "target": "Command palette",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 6.25,
+          "tag": "input",
+          "target": "Search pages and actions…",
+          "role": "combobox",
+          "inputType": null
+        },
+        {
+          "kind": "click",
+          "atSeconds": 6.25,
+          "tag": "button",
+          "target": "Sessions",
+          "role": "option",
+          "inputType": "button"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 7.5,
+          "tag": "input",
+          "target": "Site URL to open:",
+          "role": null,
+          "inputType": "text"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 7.5,
+          "tag": "button",
+          "target": "🌐 Open login window",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "change",
+          "atSeconds": 9,
+          "tag": "input",
+          "target": "",
+          "role": null,
+          "inputType": "text"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 9,
+          "tag": "button",
+          "target": "Collect & save",
+          "role": null,
+          "inputType": "button"
+        },
+        {
+          "kind": "click",
+          "atSeconds": 10.5,
+          "tag": "button",
+          "target": "Close window",
+          "role": null,
+          "inputType": "button"
+        }
+      ],
+      "fixtureCalls": [],
+      "ffprobe": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "codec_name": "gif",
+            "width": 960,
+            "height": 740,
+            "nb_read_frames": "94"
+          }
+        ],
+        "format": {
+          "duration": "11.760000",
+          "size": "210121"
+        }
+      }
+    }
+  ],
+  "network": {
+    "fulfilledDocuments": 12,
+    "blocked": []
+  },
+  "errors": [],
+  "cleanup": {
+    "contextClosed": true,
+    "browserClosed": true
+  }
+}

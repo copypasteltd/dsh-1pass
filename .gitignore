@@ -36,3 +36,6 @@ Thumbs.db
 .references/
 *.tgz
 release-artifacts/
+
+# Intermediate documentation recorder logs; only final GIFs/manifest are public.
+docs/media/*-progress.json

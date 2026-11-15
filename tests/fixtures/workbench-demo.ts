@@ -8,6 +8,9 @@ export function workbenchFixture(options: { configured?: boolean; exists?: boole
   let locked = false
   const api = {
     t: (key: VaultLocaleKey) => en[key],
+    previewQuickImport: vi.fn(async () => ({ token: 'SYNTHETIC-PREVIEW-TOKEN', expiresAt: Date.now()+300000, vaultName:'default', rows:[{line:1,title:'demo',username:'root',host:'192.0.2.10',port:'22',tags:['demo'],hasPassword:true,status:'ready' as const}],valid:1,invalid:0,duplicates:0,ignored:0 })),
+    commitQuickImport: vi.fn(async () => ({ added:1,skipped:0,lines:[{line:1,status:'added' as const}],note:'QUICK_IMPORT_COMPLETE' })),
+    discardQuickImport: vi.fn(async () => ({discarded:true})),
     setupStatus: vi.fn(async () => ({ configured, exists: options.exists ?? false })),
     openWithPassword: vi.fn(async (_password: string) => { configured = true; return { locked: false, entries: entries.length } }),
     config: vi.fn(async () => ({ accessMode: 'auto' as const, autoCapture: false, autoLockSeconds: 0, toolProfile: 'basic' as const, toolGroups: ['core'] })),
@@ -29,7 +32,7 @@ export function workbenchFixture(options: { configured?: boolean; exists?: boole
     runCloudBackup: vi.fn(async () => ({ config: { enabled: false, onChange: true, intervalMinutes: 60, retention: 10, targets: [] }, statuses: [], running: false })),
     history: vi.fn(async () => [{ action: 'add', title: 'Example account', at: 1794670000000 }]),
     recent: vi.fn(async () => entries),
-    templates: vi.fn(async () => []), watchtower: vi.fn(async () => []), sessionListOpen: vi.fn(async () => []), sessionListSaved: vi.fn(async () => []),
+    templates: vi.fn(async () => [{name:'builtin:login',kind:'login',fields:{username:'Account',password:'Password'}},{name:'builtin:totp',kind:'totp',fields:{username:'Account',otpSecret:'Setup key or otpauth URI',url:'Optional website'}},{name:'builtin:ssh-password',kind:'ssh-password',fields:{host:'Server',port:'Port',username:'User',password:'Login password'}},{name:'builtin:ssh-certificate',kind:'ssh-certificate',fields:{host:'Server',port:'Port',username:'User',privateKey:'Private key',certificate:'Certificate',keyPassphrase:'Passphrase'}},{name:'builtin:api-key',kind:'api-key',fields:{apiKey:'API key',secret:'Secret'}},{name:'builtin:card',kind:'card',fields:{cardNumber:'Number',cardCvv:'CVV',cardExpiry:'Expiry',cardHolder:'Holder'}}]), watchtower: vi.fn(async () => []), sessionListOpen: vi.fn(async () => []), sessionListSaved: vi.fn(async () => []),
     rotation: vi.fn(async () => []), duplicateGroups: vi.fn(async () => []), verifyAll: vi.fn(async () => []), tags: vi.fn(async () => []), generatorHistory: vi.fn(async () => []), backups: vi.fn(async () => []), trash: vi.fn(async () => []),
   }
   return { api, props: api as unknown as VaultSectionProps }

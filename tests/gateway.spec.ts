@@ -57,7 +57,7 @@ test('VaultGateway exposes the expected remote method names', async () => {
   await withGateway(async gateway => {
     const methods = remoteMethods(gateway).map(m => m.exportName ?? m.method).sort()
     expect(methods).toEqual([
-      'add', 'attach', 'attachments', 'autoLock', 'backup', 'backupStatus', 'backups', 'breachCheck', 'cloudBackup', 'config', 'delete', 'deleteBackup', 'detach', 'downloadAttachment', 'duplicateGroups', 'duplicates', 'export1pux', 'exportBitwarden', 'exportCsv', 'generatePassword', 'generateUsername', 'generatorHistory', 'get', 'health', 'history', 'import1password', 'import1pif', 'importBitwarden', 'importBitwardenEncrypted', 'importChrome', 'importEnpass', 'importFirefox', 'importKdbx', 'importKeePassXml', 'importManagerCsv', 'keychainImport', 'list', 'listVaults', 'lock', 'merge', 'openWithPassword', 'passwordHistory', 'passwordRollback', 'previewImportCsv', 'purge', 'recent', 'recoveryCode', 'recoveryStatus', 'removeTag', 'renameTag', 'restore', 'restoreBackup', 'rotation', 'runCloudBackup',
+      'add', 'attach', 'attachments', 'autoLock', 'backup', 'backupStatus', 'backups', 'breachCheck', 'cloudBackup', 'cloudSyncCall', 'commitQuickImport', 'config', 'delete', 'deleteBackup', 'detach', 'discardQuickImport', 'downloadAttachment', 'duplicateGroups', 'duplicates', 'export1pux', 'exportBitwarden', 'exportCsv', 'generatePassword', 'generateUsername', 'generatorHistory', 'get', 'health', 'history', 'import1password', 'import1pif', 'importBitwarden', 'importBitwardenEncrypted', 'importChrome', 'importEnpass', 'importFirefox', 'importKdbx', 'importKeePassXml', 'importManagerCsv', 'keychainImport', 'list', 'listVaults', 'lock', 'merge', 'openWithPassword', 'passwordHistory', 'passwordRollback', 'previewImportCsv', 'previewQuickImport', 'purge', 'recent', 'recoveryCode', 'recoveryStatus', 'removeTag', 'renameTag', 'restore', 'restoreBackup', 'rotation', 'runCloudBackup',
       'saveTemplate', 'search', 'searchSystem', 'sessionClose', 'sessionCollect', 'sessionExport', 'sessionGet', 'sessionListOpen', 'sessionListSaved', 'sessionOpen', 'sessionPrune', 'sessionSave', 'setAccessMode', 'setAutoCapture', 'setAutoLock', 'setCloudBackup', 'setFavorite', 'setToolProfile', 'setupStatus', 'stats', 'status', 'strength', 'switchVault', 'tags', 'templates', 'totp', 'totpUri', 'touch', 'trash', 'undeleteAll', 'unlock', 'update', 'vaultDelete', 'vaultRename', 'verifyAll', 'verifyRecovery', 'watchtower',
     ])
   })
@@ -738,6 +738,22 @@ test('gateway switchVault / listVaults', async () => {
     expect(Array.isArray(list)).toBe(true)
     await gateway.switchVault('vault')
     resetVaultSwitch()
+  })
+})
+
+test('TOTP countdown follows the provisioning period instead of a fixed 30 seconds', async () => {
+  await withGateway(async gateway => {
+    const key = 'JBSW'+'Y3DP'+'EHPK'+'3PXP'
+    const id = (await gateway.add({title:'Synthetic 45-second authenticator',kind:'custom',otpSecret:'otpauth://totp/Synthetic?secret='+key+'&period=45'})).id
+    const now = vi.spyOn(Date,'now').mockReturnValue(44000)
+    try {
+      const before = await gateway.totp(id)
+      expect(before.secondsRemaining).toBe(1)
+      now.mockReturnValue(45000)
+      const next = await gateway.totp(id)
+      expect(next.secondsRemaining).toBe(45)
+      expect(next.code).not.toBe(before.code)
+    } finally { now.mockRestore() }
   })
 })
 

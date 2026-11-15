@@ -1,9 +1,9 @@
 /** Copy for the reference-derived password workbench. */
 export const workbenchEn = {
-  wbHome: 'Home', wbEntries: 'Passwords', wbBackup: 'Cloud backups', wbSettings: 'Settings', wbMore: 'More',
+  wbHome: 'Home', wbEntries: 'Passwords', wbBackup: 'Cloud sync', wbSettings: 'Settings', wbMore: 'More',
   wbCommands: 'Command palette', wbCommandSearch: 'Search pages and actions…', wbNoCommands: 'No matching commands.',
   wbAbout: 'About', wbBack: 'Back to {page}', wbClose: 'Close', wbReady: 'Ready', wbWorking: 'Working…',
-  wbOverview: 'Vault overview', wbStatusUnknown: 'Status unavailable', wbLocal: 'Encrypted on this device', wbLocalBackups: 'Local backups',
+  wbOverview: 'Vault overview', wbStatusUnknown: 'Status unavailable', wbLocal: 'Encrypted on this device', wbLegacyCloud: 'Legacy cloud backup (migration only)', wbLocalBackups: 'Local backups',
   wbRecent: 'Recent activity', wbTime: 'Time', wbEvent: 'Event', wbDetail: 'Entry', wbNoActivity: 'No activity yet.',
   wbQuickActions: 'Quick actions', wbSecurityHint: 'Weak passwords, reuse, expiry and two-factor authentication',
   wbTransferHint: 'Import from browsers and password managers, or export your entries', wbSessionsHint: 'Collect, save and manage browser sessions',
@@ -15,14 +15,17 @@ export const workbenchEn = {
   wbCreateHint: 'Choose a master password for your local encrypted vault. Keep it safe: it is needed to open the vault again.',
   wbMismatch: 'The passwords do not match.', wbRequired: 'Enter a master password.', wbSetupFailed: 'Unable to open the vault. Check the password and try again.',
   wbRetry: 'Retry', wbLoadFailed: 'Unable to read vault status.', wbCancel: 'Cancel', wbConfirm: 'Confirm', wbPrompt: 'Enter a value',
+  wbBootLoading: 'Checking vault…', wbWaitingUnlock: 'Enter the master password to open your vault.', wbWaitingCreate: 'Create a master password to get started.',
+  wbOpenFailedStatus: 'Vault opening failed. Check the form above.',
+  wbEntriesLoading: 'Loading vault entries…', wbEntriesLoadFailed: 'Unable to load vault entries. Try refreshing.',
   wbSecurity: 'Security', wbTransfer: 'Import / export', wbSessions: 'Sessions', wbAudit: 'Activity', wbTrash: 'Trash',
   wbVersion: 'Version', wbSearch: 'Search passwords', wbNew: 'New entry', wbRefresh: 'Refresh', wbLock: 'Lock vault',
 } as const
 export const workbenchZh: Record<keyof typeof workbenchEn, string> = {
-  wbHome: '首页', wbEntries: '密码簿', wbBackup: '云备份', wbSettings: '设置', wbMore: '更多',
+  wbHome: '首页', wbEntries: '密码簿', wbBackup: '云端同步', wbSettings: '设置', wbMore: '更多',
   wbCommands: '命令面板', wbCommandSearch: '搜索页面和操作…', wbNoCommands: '没有匹配的命令。',
   wbAbout: '关于', wbBack: '返回{page}', wbClose: '关闭', wbReady: '就绪', wbWorking: '处理中…',
-  wbOverview: '密码库概览', wbStatusUnknown: '状态不可用', wbLocal: '在本机加密存储', wbLocalBackups: '本地备份',
+  wbOverview: '密码库概览', wbStatusUnknown: '状态不可用', wbLocal: '在本机加密存储', wbLegacyCloud: '旧版云备份（仅迁移）', wbLocalBackups: '本地备份',
   wbRecent: '最近活动', wbTime: '时间', wbEvent: '操作', wbDetail: '条目', wbNoActivity: '暂无操作记录。',
   wbQuickActions: '快捷操作', wbSecurityHint: '弱密码、重复使用、到期提醒与两步验证',
   wbTransferHint: '从浏览器或密码管理器导入，或导出密码条目', wbSessionsHint: '收集、保存与管理浏览器会话',
@@ -34,6 +37,9 @@ export const workbenchZh: Record<keyof typeof workbenchEn, string> = {
   wbCreateHint: '为本机加密密码库设置主密码。请妥善保管，下次打开密码库仍需使用。',
   wbMismatch: '两次输入的密码不一致。', wbRequired: '请输入主密码。', wbSetupFailed: '无法打开密码库，请检查主密码后重试。',
   wbRetry: '重试', wbLoadFailed: '无法读取密码库状态。', wbCancel: '取消', wbConfirm: '确认', wbPrompt: '输入内容',
+  wbBootLoading: '正在检查密码库…', wbWaitingUnlock: '输入主密码以打开密码库。', wbWaitingCreate: '请先设置主密码以创建密码库。',
+  wbOpenFailedStatus: '打开密码库失败，请检查上方表单。',
+  wbEntriesLoading: '正在加载密码条目…', wbEntriesLoadFailed: '无法加载密码条目，请刷新重试。',
   wbSecurity: '安全检查', wbTransfer: '导入 / 导出', wbSessions: '会话', wbAudit: '活动', wbTrash: '回收站',
   wbVersion: '版本', wbSearch: '搜索密码', wbNew: '新建条目', wbRefresh: '刷新', wbLock: '锁定密码库',
 }

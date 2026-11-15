@@ -1,6 +1,6 @@
 {
   "name": "dsh-vault",
-  "version": "1.11.0",
+  "version": "1.12.2",
   "bin": {
     "dsh-vault": "lib/cli.js"
   },
@@ -40,9 +40,18 @@
   "files": [
     "lib",
     "!lib/cloud-preview/**",
+    "!lib/cloud-sync-visual/**",
+    "!lib/github-connected-qa/**",
+    "!lib/docs-demo/**",
     "!lib/**/*.map",
     "docs/cloud-backup.md",
+    "docs/cloud-sync-transports.md",
+    "docs/cloud-sync-ui-adoption.md",
+    "vendor/config-manager/LICENSE",
+    "vendor/config-manager/source-manifest.json",
     "docs/gui-reference.md",
+    "docs/credential-editor-quick-import.md",
+    "skills/1pass/SKILL.md",
     "NOTICE",
     "cordis.patch.yml",
     "README.md",
@@ -76,6 +85,10 @@
     "@types/node": "^22.0.0",
     "@types/react": "^18.3.31",
     "@types/react-dom": "^18.3.7",
+    "@radix-ui/react-dialog": "1.3.1",
+    "lucide": "1.61.0",
+    "lucide-react": "1.61.0",
+    "morphicons": "2.0.0",
     "jsdom": "^26.1.0",
     "lightningcss": "^1.32.0",
     "playwright-core": "^1.61.1",

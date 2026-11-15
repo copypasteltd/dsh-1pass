@@ -555,7 +555,9 @@ test('vault_env renders env-flagged entries and vault_templates lists fields', a
     assert.ok(env.lines.some(l => l.startsWith('STRIPE_API_KEY=') && l.includes('sk_live_123')), `got ${JSON.stringify(env.lines)}`)
 
     const tpl = await call(ctx, 'vault_templates', { kind: 'ssh' }) as { fields: Record<string, string> }
-    assert.ok('host' in tpl.fields && 'privateKey' in tpl.fields)
+    assert.ok('host' in tpl.fields && 'password' in tpl.fields)
+    const certificate = await call(ctx, 'vault_templates', { kind: 'ssh-certificate' }) as { fields: Record<string, string> }
+    assert.ok('privateKey' in certificate.fields && 'certificate' in certificate.fields && !('password' in certificate.fields))
   })
 })
 
@@ -2572,7 +2574,8 @@ test('vault_templates save/list/remove custom templates', async () => {
     assert.ok(list.templates.some(t => t.name === 'MySSH'))
     const got = await call(ctx, 'vault_templates', { name: 'MySSH' }) as { kind: string; fields: Record<string, string> }
     assert.equal(got.kind, 'ssh')
-    assert.equal(got.fields.host, 'prod.example')
+    assert.equal(got.fields.host, 'host')
+    assert.ok(!JSON.stringify(got.fields).includes('prod.example'))
     const removed = await call(ctx, 'vault_templates', { action: 'remove', name: 'MySSH' }) as { removed: boolean }
     assert.equal(removed.removed, true)
   })
@@ -3548,4 +3551,20 @@ test('deleting a vault removes its sidecars and keeps its backups', async () => 
     assert.equal(existsSync(policyPath), false, 'no stale policy is inherited by the new vault')
     assert.equal((await gateway.list()).entries.length, 0)
   }, { name: 'default' })
+})
+
+test('model summaries omit custom values while explicit vault_get can still return the fields', async()=>{
+ await withContext(async ctx=>{
+  const added=await call(ctx,'vault_add',{title:'demo-api',password:'SYNTHETIC-PRIMARY-SECRET',fields:{region:'demo-zone',customPassword:'SYNTHETIC-CUSTOM-SECRET'}}) as {id:string}
+  for(const args of [{query:'demo-api'},{query:'SYNTHETIC-CUSTOM-SECRET'},{query:'demo-api',regex:true}]){
+   const result=await call(ctx,'vault_search',args) as {results:Array<Record<string,unknown>>}
+   assert.ok(result.results.length>0)
+   assert.equal(JSON.stringify(result).includes('SYNTHETIC-CUSTOM-SECRET'),false)
+   assert.equal('fields' in result.results[0]!,false)
+  }
+  const recent=await call(ctx,'vault_recent',{})
+  assert.equal(JSON.stringify(recent).includes('SYNTHETIC-CUSTOM-SECRET'),false)
+  const fetched=await call(ctx,'vault_get',{id:added.id,fields:['fields']}) as {entry:{fields:Record<string,string>}}
+  assert.equal(fetched.entry.fields.customPassword,'SYNTHETIC-CUSTOM-SECRET')
+ })
 })

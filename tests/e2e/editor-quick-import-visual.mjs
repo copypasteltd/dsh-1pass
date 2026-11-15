@@ -1,0 +1,52 @@
+/** Synthetic GUI QA only: all requests blocked/in-memory, no real passwords/vaults. */
+import { chromium } from 'playwright-core'
+import { readFile, mkdir } from 'node:fs/promises'
+import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
+const root=fileURLToPath(new URL('../../',import.meta.url))
+const bundle=await readFile(join(root,'lib/cloud-preview/workbench.js'),'utf8')
+const output=join(root,'lib/cloud-preview');await mkdir(output,{recursive:true})
+const browser=await chromium.launch({headless:true,executablePath:process.env.DSH_TEST_CHROME??'C:/Program Files/Google/Chrome/Application/chrome.exe'})
+const errors=[]
+try {
+  const context=await browser.newContext({viewport:{width:1000,height:900}})
+  await context.route('**/*',async route=>{
+    if(route.request().isNavigationRequest()&&route.request().url().startsWith('https://onepass.test/'))await route.fulfill({contentType:'text/html',body:'<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;background:#f4f5f7;color:#202124;font-family:system-ui}#root{box-sizing:border-box;width:min(564px,100vw);height:720px;margin:24px auto;background:white;border:1px solid #ddd;border-radius:12px;overflow:hidden;--dsw-font-family:system-ui;--dsw-alias-label-primary:#202124;--dsw-alias-label-secondary:#62666d;--dsw-alias-label-tertiary:#707780;--dsw-alias-bg-layer-1:#fafafa;--dsw-alias-bg-layer-2:white;--dsw-alias-border-l1:#dedfe3;--dsw-alias-border-l2:#dedfe3;--dsw-alias-border-l4:#d0d2d8;--dsw-specific-input-major:#f4f5f7;--dsw-alias-interactive-bg-hover:#f0f1f4;--dsw-alias-state-business-primary:#356dca;--dsw-alias-button-info-fill:#356dca;--dsw-alias-button-info-hover:#285caf;--dsw-alias-label-primary-foreground:white;--dsw-alias-state-success-primary:#279258;--dsw-alias-state-warn-primary:#b97b0e;--dsw-alias-state-error-primary:#bf3d3d}</style><div id="root"></div>'})
+    else await route.abort()
+  })
+  const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message))
+  await page.goto('https://onepass.test/');await page.addScriptTag({content:bundle})
+  await page.getByText('Example account',{exact:true}).first().waitFor()
+  await page.getByRole('button',{name:'新建条目',exact:true}).click()
+  const editor=page.getByRole('region',{name:'新增凭据',exact:true})
+  await editor.getByLabel("套用模板",{exact:true}).selectOption('builtin:ssh-password')
+  await editor.getByLabel('SSH 认证方式',{exact:true}).waitFor()
+  if(await editor.getByLabel('API 密钥',{exact:true}).count())throw new Error('SSH template leaked unrelated API fields')
+  if(await editor.getByLabel('卡号',{exact:true}).count())throw new Error('SSH template leaked unrelated card fields')
+  await page.screenshot({path:join(output,'editor-ssh-password.png')})
+  await editor.getByLabel("套用模板",{exact:true}).selectOption('builtin:ssh-certificate')
+  await editor.getByLabel('私钥',{exact:true}).waitFor()
+  if(await editor.getByLabel('密码',{exact:true}).count())throw new Error('Certificate mode leaked password field')
+  await page.screenshot({path:join(output,'editor-ssh-certificate.png')})
+  await editor.getByRole('button',{name:'TOTP / Google 验证器',exact:true}).click()
+  await editor.getByLabel('TOTP 密钥',{exact:true}).waitFor()
+  if(await editor.getByLabel('密码',{exact:true}).count())throw new Error('Standalone authenticator leaked login password field')
+  await page.screenshot({path:join(output,'editor-totp-authenticator.png')})
+  await editor.getByRole('button',{name:'取消',exact:true}).first().click()
+  await page.getByRole('tab',{name:'首页',exact:true}).click()
+  await page.getByRole('button',{name:'快速导入',exact:true}).click()
+  const input=page.getByLabel('凭据文本',{exact:true})
+  await input.waitFor().catch(async()=>{await page.locator('textarea').first().waitFor()})
+  await page.screenshot({path:join(output,'quick-import-paste.png')})
+  await input.fill('root@192.0.2.10:22|SYNTHETIC-DO-NOT-USE|demo')
+  await page.getByRole('button',{name:'预览凭据行',exact:true}).click()
+  await page.getByRole('table').waitFor()
+  if((await page.locator('body').innerText()).includes('SYNTHETIC-DO-NOT-USE'))throw new Error('Preview revealed synthetic password')
+  await page.screenshot({path:join(output,'quick-import-preview.png')})
+  await page.setViewportSize({width:390,height:844})
+  const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)
+  await page.screenshot({path:join(output,'quick-import-mobile.png')})
+  await context.close()
+  if(errors.length||overflow)throw new Error(JSON.stringify({errors,overflow}))
+  console.log(JSON.stringify({rendered:true,network:'blocked',passwordVisibleInPreview:false,overflow,screenshots:6}))
+}finally{await browser.close()}

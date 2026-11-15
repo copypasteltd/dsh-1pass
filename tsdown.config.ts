@@ -43,6 +43,7 @@ const PLATFORM_MODULES = [
   '@deepseek-ai/dsh-client-modules',
   '@deepseek-ai/dsh-client-runtime',
   '@deepseek-ai/dsh-client-ui-layout',
+  '@deepseek-ai/dsh-client-ui-primitives',
   '@deepseek-ai/dsh-client-ui-settings',
   '@deepseek-ai/dsh-client-ui-settings-general',
   '@deepseek-ai/dsh-client-ui-settings-models',
@@ -122,6 +123,7 @@ export default {
     },
   }],
   outputOptions: {
+    codeSplitting: false,
     entryFileNames: 'client.js',
     sourcemapPathTransform(source: string, sourcemapPath: string) {
       if (!source.startsWith('.')) return source

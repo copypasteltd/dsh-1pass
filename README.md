@@ -1,78 +1,405 @@
-# dsh-vault — Encrypted Credential Vault for DeepSeek Harness
+# dsh-1pass · Encrypted credentials for DeepSeek Harness
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![npm version](https://img.shields.io/npm/v/dsh-vault?color=cb3837&logo=npm)](https://www.npmjs.com/package/dsh-vault)
-[![GitHub Release](https://img.shields.io/github/v/release/Ox0400/dsh-vault?logo=github)](https://github.com/Ox0400/dsh-vault/releases)
-[![npm downloads](https://img.shields.io/npm/dm/dsh-vault)](https://www.npmjs.com/package/dsh-vault)
-[![GitHub issues](https://img.shields.io/github/issues/Ox0400/dsh-vault)](https://github.com/Ox0400/dsh-vault/issues)
-[![Listed: awesome-dsh-plugin](https://img.shields.io/badge/Listed-awesome--dsh--plugin-2ea44f)](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin#L2869)
-[![Listed: awesome-deepseek-harness](https://img.shields.io/badge/Listed-awesome--deepseek--harness-2ea44f)](https://github.com/Dominic789654/awesome-deepseek-harness#L903)
+[English](<README.md>) | [简体中文](<README-zh.md>)
 
-**English** | [中文](README-zh.md)
+**A local-first password workbench, 113 discoverable model tools, a script-friendly CLI, and a least-disclosure /1pass skill.**
 
-dsh-vault is a security-focused plugin for DeepSeek Harness that stores sensitive credentials — **usernames, emails, phone numbers, passwords, TOTP secrets**, and developer credentials like **SSH connections, API keys, secrets, and OAuth access/refresh tokens** — encrypted at rest, and exposes them to the model through CRUD, search, password generation, and TOTP tools, plus a Settings UI page.
+Package/plugin/CLI name: **dsh-vault**. Settings name: **Password Manager (1pass)** / **密码管理(1pass)**.
+Repository: [copypasteltd/dsh-1pass](https://github.com/copypasteltd/dsh-1pass).
+Current source version: **1.12.2**; this describes the source tree, **not a claim that a v1.12.2 GitHub Release or npm publication exists**.
+“1pass” is this project's workbench/skill name, not the commercial 1Password product; 1Password is a supported import/export format.
 
-## Security & Implementation
+> Keep master passwords, batch credentials and cloud transport tokens out of chat. Enter them in the local GUI or an authorized secret-input channel. Finding a credential is not permission to connect, deploy, export, or change an account.
 
-- **Zero external crypto dependencies**: everything is built on Node's built-in `node:crypto` (AES-256-GCM authenticated encryption, scrypt key derivation, RFC 6238 TOTP).
-- **Master password**: every entry is encrypted with a 256-bit key derived via `scrypt(master password, salt)` and AES-256-GCM. The key never touches disk; after unlock it is cached in-process and re-derived on restart.
-- **Tamper-evident**: GCM auth tags plus a fixed-plaintext verification envelope — a wrong master password or modified ciphertext fails immediately, never returning garbage.
-- **No plaintext at rest**: the on-disk document contains no plaintext credentials; each entry uses an independent random nonce.
-- **Atomic writes**: reuses the harness `writeFileAtomic` + file lock; in-process writes are serialized, cross-process writers take the lock.
-- **Search never leaks**: `vault_search` returns summaries only (id/title/kind/username/email/phone/host/port/url/tags) — **never passwords, keys, tokens, or TOTP secrets**. Full credentials are readable only via explicit `vault_get` by id.
+## Contents
 
-## Entry Model
+- [What it does](#what-it-does)
+- [Install and build](#install-and-build)
+- [First unlock and language](#first-unlock-and-language)
+- [/1pass workflow](#1pass-workflow)
+- [Credential model](#credential-model)
+- [GUI pages and operation GIFs](#gui-pages-and-operation-gifs)
+- [Encrypted cloud sync](#encrypted-cloud-sync)
+- [Local and legacy backups](#local-and-legacy-backups)
+- [Access and security](#access-and-security)
+- [Command line](#command-line)
+- [Environment export](#environment-export)
+- [Tool profiles](#tool-profiles)
+- [Tools](#tools)
+- [Configuration](#configuration)
+- [Troubleshooting](#troubleshooting)
+- [Development and publishing](#development-and-publishing)
+- [Further reading and license](#further-reading-and-license)
 
-Each record has a `title`, an optional `kind`, and any combination of fields:
+## What it does
 
-| Field | Description |
+- Stores logins, SSH password/private-key credentials, API keys, OAuth tokens, TOTP seeds, cards, cookies and custom fields locally, encrypted with **AES-256-GCM + scrypt**.
+- Offers a bilingual, host-theme-aware workbench: search, favorites, tags, type-specific editors, masked previews, attachments, history, security reports and trash.
+- Provides **Git, WebDAV, S3-compatible storage and Gist** encrypted entry-snapshot sync, with preview, explicit confirmation, three-way merge and per-channel automatic-sync controls.
+- Imports browser/password-manager data and exports portable formats; distinguishes encrypted backups from plaintext migration files.
+- Lets an assistant discover summaries before reading a narrowly selected field, and lets an authorized consumer fetch its own secret through the CLI.
+- Registers only **11 core tools by default**, not the complete 113-tool catalog. Optional groups expose management, I/O, sessions and vault-file operations when needed.
+- Keeps existing encrypted vaults and environment-based deployments usable; first-use GUI setup does not require placing a password in configuration.
+
+**Different stores, different responsibilities:** DSH host credentials (provider tokens and sync credential slots) are **not** the same as 1pass entries. A token stored in DSH's own credentials service is not automatically an entry searchable with vault_search, and vice versa.
+
+## Install and build
+
+### Requirements
+
+- **Node.js >= 20** and a compatible DeepSeek Harness installation for the plugin UI/model tools.
+- npm or pnpm for source builds; **Git on PATH** for the Git sync channel.
+- Optional **playwright-core** and an available supported browser for opening manual browser-login sessions. Ordinary CLI reads do not require a browser.
+- The package's declared DSH peer services must be provided by the host/profile; a standalone CLI read does not start the DSH GUI.
+
+### Build this repository
+
+The commands below use the source version in this repository rather than assuming the registry is current:
+
+~~~sh
+git clone git@github.com:copypasteltd/dsh-1pass.git
+cd dsh-1pass
+npm install --ignore-scripts
+npm run build
+node lib/cli.js --help
+~~~
+
+The build script compiles host code and the browser bundle. Ignoring install scripts makes the subsequent build explicit. Equivalent project scripts are available through pnpm.
+
+### Install into a DSH profile
+
+After the build, run from the checkout root; replace web with your actual profile:
+
+~~~sh
+dsh plugin --profile web add .
+~~~
+
+If DSH itself is invoked through pnpm in your installation, use pnpm dsh in place of dsh. The bundle patch inserts the vault plugin row; do not add a duplicate row by hand.
+
+A release package can also be installed by its real tarball path:
+
+~~~sh
+npm pack
+dsh plugin --profile web add ./dsh-vault-1.12.2.tgz
+~~~
+
+This filename follows the current manifest; packing/building locally does not publish a release. A registry install such as dsh plugin --profile web add dsh-vault installs the **registry's version**, which may differ from this source tree.
+Git-dependency installs run prepare to build; pnpm's build-approval policy may block that script. Prefer an explicit source build/tarball if you cannot review the requested build approval.
+
+### Make the CLI available
+
+| Installation | Invocation |
 |---|---|
-| `kind` | `login` (default) / `ssh` / `api-key` / `secret` / `oauth` / `cookie` / `card` / `custom` |
-| `username` / `email` / `phone` | Account identity |
-| `password` | The password |
-| `host` / `port` | SSH host and port (e.g. `db.internal` / `2222`) |
-| `privateKey` | SSH private key (PEM) |
-| `apiKey` | API key |
-| `secret` | Generic secret (client secret, shared secret, …) |
-| `accessToken` / `refreshToken` / `expiresAt` | OAuth token pair and expiry (epoch millis) |
-| `otpSecret` | TOTP secret (bare Base32 or otpauth:// URI) |
-| `url` / `notes` / `tags` | Metadata |
+| Built source checkout | node lib/cli.js list or npm run vault -- list |
+| Plugin installed as a profile dependency | dsh plugin --profile web exec dsh-vault list |
+| Globally installed package | dsh-vault list |
 
-Two kinds carry their own shape: a `cookie` entry stores a captured browser session, and a `card` entry stores `cardNumber` / `cardExpiry` (MM/YY) / `cardCvv` / `cardHolder` — search summaries expose only the expiry and holder, never the number or CVV, and the Bitwarden JSON export maps it to a `card` item (type 3, brand inferred).
-| `fields` | Arbitrary key/value pairs (e.g. `{"region": "us-east-1"}`), searchable |
+A manually linked folder need not create the profile's executable shim. Use the source CLI or reinstall through the normal plugin dependency route rather than assuming a command exists.
+The registry/global route is convenient, but check dsh-vault --version before relying on current-source features.
+
+## First unlock and language
+
+1. Enable the plugin and open **Settings → Password Manager (1pass)** (Chinese: **设置 → 密码管理(1pass)**).
+2. If no vault exists, enter and confirm a nonempty master password. If it exists, enter its existing master password. A strength warning is advisory; choose a strong unique password anyway.
+3. The first-use form sends it to the local DSH host and keeps runtime unlock material in memory, not browser storage, URLs, model arguments or a plaintext config row.
+4. After a host restart, re-enter it unless you deliberately configured an environment-based unlock path. Use Lock and auto-lock for idle protection.
+5. Change **DSH's interface language** to English or 简体中文 in the host's language/preferences settings, then return to 1pass. The plugin follows the host locale; there is no independent per-vault language selector. This README and its [GUI guide](<docs/gui-guide.md>) have matching Chinese counterparts.
+
+**GUI unlocked does not imply standalone CLI unlocked.** A separate CLI process opens the file itself and needs its own master-password input. It does not read the GUI's memory or automatically inherit a host credential slot.
+
+## /1pass workflow
+
+The reusable skill source is [skills/1pass/SKILL.md](<skills/1pass/SKILL.md>).
+Import/create it through your DSH installation's normal Skills interface, using the skill name **1pass** and that source. Merely cloning this repository or installing the plugin does **not** automatically install a local skill. If skill creation is denied by your permissions, ask the user to enable that path; do not bypass it by writing the host's skill directory.
+
+Examples use synthetic titles and documentation-only hosts, not real accounts:
+
+~~~text
+/1pass demo-server
+/1pass demo-server only host username port
+/1pass use demo-api for authorized task
+~~~
+
+The workflow is deliberately ordered:
+
+1. **Summary first:** search for demo-server; show the matching title, kind and non-secret identity/host summary, not the password.
+2. **Disambiguate:** if several entries match, let the user choose an id/title and the intended target. Do not guess across vaults or similarly named servers.
+3. **Minimal fields, just in time:** a metadata request needs only host/username/port. Read an API key, password, private key or current TOTP only when the authorized consumer actually needs it.
+4. **Safe handoff:** prefer having that consumer call dsh-vault get itself, or a direct approved paste; do not echo the secret in the answer, logs, URLs or command arguments.
+5. **Verify the operation:** say “credential located” when that is all that happened. Say “SSH connected” only after the SSH/remote tool actually reports success. A vault read neither opens a connection nor verifies credentials.
+
+Example model-tool sequence (illustrative arguments, not an automatic connection):
+
+~~~json
+{"query":"demo-server","kind":"ssh"}
+{"id":"<chosen-entry-id>","fields":["host","username","port"]}
+~~~
+
+For an installed CLI, dsh-vault get demo-server --field host reads exactly that field. Secret fields belong inside the authorized consuming process. --mask is only a partial preview: it can retain prefixes and leave custom/metadata values readable; it is not a secret-free existence test. If the safe chosen-id read is denied or unavailable, stop rather than falling back to vault_fill or a broad export.
+A skill supplies guidance, not a new authorization boundary, network tool or bypass for locked/readonly vaults.
+
+## Credential model
+
+An entry has a title, id, kind and any relevant fields. Titles need not be unique; use the id when ambiguous.
+
+| Type / field group | Stored data and intended use |
+|---|---|
+| login | username, email, phone, password, url |
+| ssh / password | host, optional ip, port, username, sshAuth=password, password |
+| ssh / certificate or private key | host, ip, port, username, sshAuth=certificate, privateKey, optional certificate and keyPassphrase |
+| api-key / secret | apiKey or secret, optional owner/url/notes |
+| oauth | accessToken, refreshToken, expiresAt (epoch milliseconds), client metadata in fields |
+| TOTP | otpSecret as Base32 or a single-account otpauth://totp/ setup URI; it may coexist with another type |
+| card | cardNumber, cardExpiry, cardCvv, cardHolder; summary omits number/CVV |
+| cookie | Browser-session cookies; treat cookie values as account credentials |
+| custom | Arbitrary fields, including preserved nested values; do not place secrets in titles/tags |
+| Organization | tags, favorite, icon, color, notes, sensitivity and rotationDays |
+| Script naming | envKeys (positional exact names), or legacy envKey shorthand; env tag opts into batch env export |
+| History and files | Previous passwords and attachments remain encrypted entry content |
+
+SSH “certificate” means an optional **OpenSSH user certificate**, not a website TLS certificate. Private-key shape checking is not proof of server login. Host and IP are separate fields; port must be 1–65535.
+TOTP expects a **setup seed**, not today's six-digit code. Current supported setup URIs use SHA-1; QR images, otpauth-migration:// multi-account exports and unsupported algorithms are not silently accepted.
+Templates save field structure/hints, **not actual passwords, private keys, card values or custom-field contents**.
+
+## GUI pages and operation GIFs
+
+Start with the complete [English GUI operation guide](<docs/gui-guide.md>); every page, workflow, language step and safety boundary is covered there.
+Four main destinations are **Home, Passwords, Cloud sync, Settings**. Width-dependent **More**, Home quick actions and the command palette expose the remaining tasks.
+
+| Page / task | What to do there |
+|---|---|
+| Home | Inspect vault/count/health/backup status; open quick actions and recent activity |
+| Passwords | Search, combine type/tag/favorite/due/risk filters, sort, expand rows and use row actions |
+| Credential editor | Choose a template, edit type-specific fields, reveal deliberately, attach files, set TOTP/metadata |
+| Quick import | Parse local pasted lines, inspect masked results, select valid nonduplicates, then confirm |
+| Security | Inspect weak/reused passwords, missing 2FA, HTTP URLs, expiry, duplicates and breach checks |
+| Import / export | Preview supported formats, choose overwrite deliberately, and distinguish plaintext exports |
+| Cloud sync | Configure four transports, encryption passwords, preview/confirm, merge, history and autosync |
+| Local backups | Create/list/restore/delete encrypted local copies; legacy cloud backup is migration-only |
+| Settings | Manage named vaults, access mode, auto-capture, auto-lock, tool profile and recovery-code status |
+| Tags | Use Passwords tag manager or Settings summaries to rename/remove tags across entries |
+| Sessions | Open manual-login windows, collect/save cookies, inspect/export/import/prune, then close windows |
+| Activity / history | Filter read/search/write activity and inspect recent events; not a durable forensic ledger |
+| Trash | Restore one/all entries, or explicitly confirm permanent removal |
+| About | Inspect package/version, local-storage explanation and attribution |
+| Command palette | Search pages/actions; navigate without hunting through overflow controls |
+
+The six paired GIFs below are **synthetic-fixture demonstrations of the UI**, not recordings of a real vault, live GitHub authorization, or end-to-end cloud success. The same fixture can render a successful-looking preview without contacting a provider. GIFs and guides are available in the GitHub repository/source checkout; do not assume the npm package bundles the media.
+
+### 1. Overview, navigation and language
+
+![Synthetic English demo: home, navigation and language](<docs/media/overview-en.gif>)
+
+### 2. Credentials, templates and quick import
+
+![Synthetic English demo: credentials and masked quick import](<docs/media/credentials-en.gif>)
+
+### 3. Import and export
+
+![Synthetic English demo: transfer previews and export warnings](<docs/media/transfer-en.gif>)
+
+### 4. Cloud sync
+
+![Synthetic English demo: transport setup, preview and merge](<docs/media/cloud-sync-en.gif>)
+
+### 5. Security, activity, local backup and trash
+
+![Synthetic English demo: security checks and history tasks](<docs/media/security-history-en.gif>)
+
+### 6. Settings and sessions
+
+![Synthetic English demo: policies, tools and session management](<docs/media/settings-sessions-en.gif>)
+
+Keyboard: **Ctrl/Cmd+K** opens the command palette; **Ctrl/Cmd+N** creates an entry when not typing and when writable/unlocked. Palette arrows/Enter choose a command; Escape closes the active plugin overlay. Main tabs support arrow/Home/End focus navigation. See the guide for scope and text-editor exceptions.
+
+## Encrypted cloud sync
+
+**Current Cloud sync is not the old raw-file uploader.** It serializes a custom full **entry snapshot**, then encrypts it with a **separate sync password**. It includes active entries, trash, password history, cookies and attachments; it does **not** copy the original vault document byte-for-byte or upload unrelated DSH settings/plugins/MCP/session configuration.
+A second device needs the same sync decryption password but can use a different local vault master password.
+
+Snapshot format is 1pass-cloud-snapshot-v1. **Metadata is plaintext:** snapshot id/time/content hash, channel, vault/device labels, platform/version labels and section information remain visible; encrypted payload uses AES-256-GCM + scrypt. Use non-sensitive vault/device names. The local merge baseline/ancestor is also stored encrypted.
+Transport authentication and sync passwords are saved in **DSH host credential slots**, not sent back as editable plaintext configuration and not automatically created as 1pass entries.
+
+### Configure a channel
+
+1. Open Cloud sync and choose Git, WebDAV, S3 or Gist.
+2. Save non-secret destination settings and supply credentials in the masked configuration dialog. Set the channel's encryption/decryption password; do not paste it into chat.
+3. Probe/refresh to establish the actual target state. A read probe is not proof of write permission.
+4. Select the vault section; encryption is mandatory. Preview the first push or pull and explicitly confirm it.
+5. Only after a reviewed manual round trip should you consider enabling automatic sync.
+
+| Channel | Configuration and boundaries |
+|---|---|
+| Git | Actual clone/fetch/ff-only/commit/non-force push. HTTPS token or existing SSH key/agent; default branch is **auto-detected from remote HEAD**, unless explicitly set. Default subdirectory **1pass**. No force push or automatic destructive reset. |
+| WebDAV | HTTPS URL, username, password, prefix (default 1pass). Strong ETag conditional index writes; missing/weak ETag means a documented non-atomic window. |
+| S3 compatible | Provider, endpoint, region, bucket, prefix, access-key id and secret, addressing/dialect settings. AWS-style conditional writes depend on server support. OSS index updates use a pre-write HEAD check, **not atomic CAS**. |
+| Gist | Gist id and token, default file prefix 1pass. Read/merge/write/verify helps but **cannot prevent overwriting an unseen concurrent write**. Prefer private/secret destinations; metadata/history still exist. |
+
+### Preview, confirm and merge
+
+Push previews bind the local memory/disk revision, destination/selection and the **whole remote index version**. A local edit, target change or newly observed remote write makes a stale confirmation fail; refresh and preview again rather than forcing it.
+Pull/one-click sync downloads, validates and decrypts on the host, compares entry ids with the encrypted common ancestor, then shows masked change/conflict summaries.
+Choose keep-local/use-remote or the offered safe merged result. Passwords, private keys and arrays are not guessed by text concatenation. Unconfirmed items remain local and do not advance the baseline. Remote deletion proposals require human review.
+A safety backup precedes local application; remote history and local rollback are separate controls. Inspect remote snapshots/history before choosing an older snapshot or deleting one.
+
+### Automatic sync and honest limits
+
+- Off by default, independently configured per channel: interval, debounced local writes, remote checks, startup cadence, conflict policy and auto-apply tier.
+- Startup/remote polling are pull-only, not a fresh permission to upload. The initial missing-baseline sync needs manual confirmation.
+- Low-risk tier does not automatically apply vault changes. “Local wins” is an explicit conflict-policy choice, not conflict detection being disabled.
+- Lock, readonly, vault/target changes and disposal invalidate in-flight authority/previews. An ambiguous timeout needs inspection before retry.
+- Git push rejection and WebDAV/AWS-style conditional requests protect races when supported. Gist, OSS and no-ETag endpoints retain stated post-read races; this is **not a distributed lock**.
+- Default snapshot retention keeps recent snapshots (10); pruning failure is reported separately. **Deleting Git/Gist files does not erase historical ciphertext**, and object-store versions may retain it too.
+
+Technical details: [transport contracts](<docs/cloud-sync-transports.md>), [sync implementation notes](<docs/cloud-sync.md>) and [UI adoption](<docs/cloud-sync-ui-adoption.md>). Implementation notes include historical verification reports; they are not fresh live-account results for your installation.
+
+## Local and legacy backups
+
+Open **Local backups** from Home or the command palette. Create an encrypted copy, inspect its timestamp/owning vault, then choose restore **merge** (default, copy entries in) or **replace** (whole-vault overwrite, safety copy first). Overwrite/merge choices are not interchangeable; review duplicates and the active vault before confirming.
+Local backups are copies of the encrypted local vault file and need its corresponding master password. They are distinct from separately password-encrypted cloud entry snapshots.
+The **Legacy cloud backup (migration only)** foldout retains the older one-way GitHub Contents/S3/OSS/R2 uploader. It is not two-way sync, does not establish the new merge baseline and does not automatically authorize a new channel destination.
+See the [legacy cloud-backup guide](<docs/cloud-backup.md>) only for that migration path.
+
+## Access and security
+
+### Access is not the tool profile
+
+| Access mode | Meaning |
+|---|---|
+| ask (default) | Ordinary model reads are free; add/update/delete and other guarded writes ask through DSH's approval channel. It does **not** ask before every password read. |
+| readonly | Read/search/code generation remain available; guarded vault mutations are rejected in tools/UI. It is **not** a “metadata only” mode or an OS sandbox. |
+| auto | Ordinary reads/writes need no per-call write confirmation. Enable only for a trusted workflow. |
+
+Id-scoped sensitive reads such as get/clipboard/TOTP/password-history/attachment of a **high-sensitivity** entry are confirmation-gated in ask and auto. This is not a universal gate around every possible bulk/export/CLI read path; prefer minimal fields and a restricted tool profile.
+GUI buttons are direct user operations with their own confirmation/readonly rules, not necessarily model-tool approval prompts. A CLI with file/key access is a separate process and is not governed by the model's tool allow-list.
+Auto-capture defaults off. Enabling it instructs the assistant to offer to save deliberately shared credentials; it is not permission to harvest unrelated secrets or save without the user's preference/consent.
+
+### Cryptography and privacy
+
+- Node's built-in crypto implements scrypt and authenticated AES-256-GCM. Random nonces and a verification envelope detect wrong passwords/tampering; serialized/atomic writes and file locking protect normal concurrent writes.
+- Encrypted-at-rest does not mean metadata/configuration is all encrypted. Vault filenames, access/profile files, recovery-code hash and cloud snapshot metadata can be visible. Keep titles/tags/notes/custom metadata non-secret when they may be searched or displayed.
+- Model summary projections omit standard password/key/token/TOTP fields and custom-field values; the GUI still supports custom data. A user can mistakenly put a secret into a title, URL or other metadata, so even summaries can be sensitive. Do not quote them unnecessarily.
+- Password strength and Watchtower-style risk badges are heuristics, not guarantees. The three-star row indicator scores passwords/PINs, not machine-generated API keys or private keys.
+- Online breach checking sends the **first five SHA-1 hex characters** to api.pwnedpasswords.com with Add-Padding; matching is local. The full hash/password/entry is not sent, but the service sees your IP and prefix. Padding hides response-size signals, not that disclosure. Choose offline checking to avoid the request; the common-password list is much smaller.
+- Copies, downloads, session exports and consumer process memory are plaintext exposure points. A clipboard feature does not make clipboard-history software safe.
+
+### Limits and recovery
+
+This plugin runs in the DSH process. It does not isolate secrets from other trusted plugins, tools running as your OS user, compromised hosts, screenshots, log capture or a model that already received a secret. Use least privilege, trusted plugins, OS permissions, separate accounts/devices and prompt discipline.
+The issued “recovery code” stores only a hash and verifies **possession**; it **cannot derive the encryption key, decrypt a lost-password vault, or reset the master password**. Keep your master password and tested encrypted backups independently safe.
+OS keychain/helper-command custody is discussed in the [master-key custody design draft](<docs/master-key-custody.md>); it is **not an implemented automatic-unlock feature** in the current CLI.
+
+## Command line
+
+### Read only what the consumer needs
+
+Examples below assume the dsh-vault executable is installed. In a checkout, substitute node lib/cli.js.
+
+~~~sh
+dsh-vault --version
+dsh-vault list --json
+dsh-vault show demo-server
+dsh-vault get demo-server --field host
+dsh-vault get demo-server --field username
+dsh-vault get demo-server --field port
+dsh-vault get demo-api --mask
+dsh-vault totp demo-api --json
+dsh-vault verify
+~~~
+
+| Command | Output / caution |
+|---|---|
+| list, show | Projected identity/metadata and presence indicators; standard secret fields and notes/custom fields are omitted, but user-entered metadata can still be sensitive |
+| get <id/title/env-name> | Primary secret by default; --field selects one field, including fields.name; ambiguous names fail |
+| get ... --json | Wraps that selected value; **does not redact** it |
+| get ... --all | Full entry JSON with secrets; avoid for routine automation |
+| totp <entry> | Current code only; --json adds digits, period and remaining seconds; itself sensitive |
+| verify | Checks master password; status on stderr and no credential output on stdout |
+| env | Only env-tagged entries; --keys-only / --mask / --explain help inspect selection |
+| export-env <path> | Writes plaintext env output (mode 0600 where supported), not an encrypted backup |
+
+Success data goes to stdout and diagnostics to stderr. Exit codes: 0 success, 1 runtime/lookup/decryption failure, 2 invalid usage.
+Do not enable shell tracing, print command substitutions, or capture a secret command's stdout into a published transcript. A consumer should fetch and use the value without logging it or placing it into process arguments/URLs.
+--mask is a masked preview, not guaranteed zero disclosure: some values retain a prefix and custom/metadata fields can remain readable. --all prints the full entry even alongside --mask. For bulk name-only checks use env --keys-only.
+
+### Standalone master-password inputs
+
+The CLI resolves **--password-stdin → DSH_VAULT_MASTER_PASSWORD → DSH_VAULT_PASSWORD → interactive hidden prompt**. Without a TTY and without an explicit source it fails. It does not read plugin configuration, use the GUI's runtime key or automatically query OS keychain custody.
+Use an authorized secret provider/input mechanism, never a literal master password in shell history, a screenshot, chat or committed script. Environment values can be inherited by child processes and seen by same-user tooling; stdin is not a claim of process isolation.
+--vault selects a named vault; --path selects a specific vault document. DSH_HOME determines the default home, then vault/default.json. Selecting another file does not authorize reading another user's vault.
+
+## Environment export
+
+**One value:** get demo-api needs no env tag. **Batch shell environment:** env intentionally includes only entries tagged env, keeping unrelated cards, notes and logins out of the shell.
+Set envKeys in the editor when the consumer needs an exact name, such as DEMO_API_KEY; envKey is the older one-name shorthand. Names are positional to exported fields, valid identifiers, at most eight, and unique. Unspecified names are derived from the title and standard field suffixes (API_KEY, ACCESS_TOKEN, REFRESH_TOKEN, PRIVATE_KEY, PASSWORD).
+Do not confuse the name shown by list with an exported value: list distinguishes tagged/exported and untagged/not-exported entries.
+
+~~~sh
+dsh-vault env --keys-only
+dsh-vault env --mask
+dsh-vault env --explain
+dsh-vault env --file ./demo.env
+dsh-vault export-env ./demo.env
+~~~
+
+The last two commands write **plaintext**; exclude the file from version control, restrict permissions and remove it after use. File output can overwrite its target; choose an intentional destination. Do not source an untrusted imported env file blindly.
+For a reviewed POSIX shell export, preserve the CLI's quoting:
+
+~~~sh
+# First inspect the key names and intended entries, without values.
+dsh-vault env --keys-only
+# Run only in the authorized shell; never log the expanded output.
+set -a
+eval "$(dsh-vault env)"
+set +a
+~~~
+
+Do **not** use export $(dsh-vault env): word splitting corrupts spaces/quotes. This is POSIX-shell syntax, not PowerShell syntax. Prefer a consumer reading a single field when it avoids broad environment exposure.
+
+## Tool profiles
+
+Change **Settings → Model tools** in 1pass. Profile registration updates at runtime and is persisted in the vault directory's tools.json; the catalog is process-wide, **not a separate model catalog per named vault**.
+
+| Profile | Registered tools |
+|---|---|
+| Basic (default) | Core: **11** |
+| Standard | Core + management: **64** |
+| Full | All five groups: **113** |
+| Custom | Core **11**, plus selected management **53**, import/export **27**, sessions **8**, files **14** |
+
+Tool availability is not authorization. ask/readonly/auto, locking, explicit target permission and destructive-action confirmations still apply. GUI-only quick import/cloud-sync controllers do not expose their entire batch payload as model tools.
 
 ## Tools
 
-113 tools in five groups. **Basic** is what a default install registers; the rest are switched on through [Tool profiles](#tool-profiles) (Settings → Credentials → Permissions → Model tools).
+All **113** tools registered by the current source are discoverable below, even when the active profile exposes only a subset. Group membership follows CORE_TOOLS / IO_TOOLS / SESSION_TOOLS / FILE_TOOLS; everything else is management. Import/export/session results may contain plaintext secrets; check fields and destination before use.
 
-### Basic (registered by default) — 11
-
-Eleven tools. Everything below is opt-in.
+### Core / Basic — 11
 
 | Tool | Purpose |
 |---|---|
 | `vault_list` | List available vaults in the vault directory (one .json file per vault, excluding access/meta/export files) |
-| `vault_search` | Search titles/categories/usernames/emails/phones/hosts/ports/URLs/notes/tags/custom fields (incl. numeric/boolean/nested values; whitespace-separated terms OR-match); optional `createdAfter`/`createdBefore` epoch-millis filters; returns secret-free summaries; `limit` must be an integer 1–100 |
-| `vault_get` | Read a full entry by id (including all secrets) |
+| `vault_search` | Search identity/metadata, tags and custom values; optional kind/time/favorite filters. Returns summaries, not password/key/token values. |
+| `vault_get` | Read an entry by id; request only needed fields, or redact. Full reads can return every stored secret. |
 | `vault_add` | Add an entry (any combination of fields; empty strings/arrays are ignored) |
 | `vault_update` | Update fields by id (unprovided fields kept; empty string clears a field; `title` is renamable; `rotationDays: 0` clears rotation = never rotate) |
 | `vault_delete` | Soft-delete an entry (moves it to the trash, still encrypted on disk) |
-| `vault_fill` | Find the entry matching a host/URL/username/title and return its credentials |
-| `vault_clipboard` | Fetch one entry secret field for direct copy (username/password/apiKey/...) |
-| `vault_totp` | Generate the current 6-digit code for a stored otpSecret (or a bare Base32 / otpauth URI) |
+| `vault_fill` | Match a target and directly return requested credentials, potentially secrets. It does not provide the same chosen-id sensitive-read gate; never use it to bypass an approval or as the /1pass fallback. |
+| `vault_clipboard` | Return one field for direct clipboard handoff; it does not by itself guarantee a safe system paste or clipboard erasure. |
+| `vault_totp` | Generate a TOTP from a stored or supplied Base32/setup URI; code lifetime and URI settings matter. |
 | `vault_generate_password` | Generate a strong random password (length/classes/grouping) **or a memorable passphrase** (`passphrase: true`, EFF-style word list, `words`/`separator`/`wordDigits`) |
 | `vault_strength` | Zero-dependency password strength estimate (score 0–100, weak/fair/strong/very strong) |
 
-### Management (Standard and up) — 53
-
-Favourites, tags, history, health, templates, attachments, card and 2FA detail.
+### Management / Standard and Full — 53
 
 | Tool | Purpose |
 |---|---|
 | `vault_compare` | Compare two entries field by field (`onlyA`/`onlyB`/`differ`/`equal`) — field names only, never secret values |
 | `vault_rename` | Rename an entry in one call (shortcut for `vault_update`) |
-| `vault_restore` / `vault_purge` / `vault_restore_recent` | Bring a trashed entry back / purge it / undo the last delete |
-| `vault_lock` / `vault_unlock` | Explicitly lock the vault (wipe the in-memory key) / re-unlock it |
+| `vault_restore` | Restore one soft-deleted entry from trash. |
+| `vault_purge` | Permanently remove one trashed entry from the current vault; independent backups/history may retain copies. |
+| `vault_restore_recent` | Undo the most recent soft deletion. |
+| `vault_lock` | Lock the active vault and clear its in-memory decryption key. |
+| `vault_unlock` | Reopen the vault using host-configured unlock material; never ask the model to receive the master password. |
 | `vault_password_history` | List an entry's previous passwords (1Password/Bitwarden-style, newest first, capped at 10; current password excluded) |
 | `vault_password_rollback` | Restore an entry password to a stored history entry (current password is archived first, so it is reversible) |
 | `vault_apply_tags` | Bulk add/remove/replace tags on every entry matching a query (dry-run supported, no secrets) |
@@ -83,7 +410,10 @@ Favourites, tags, history, health, templates, attachments, card and 2FA detail.
 | `vault_breach_check` | Watchtower-style breach scan against Have I Been Pwned (k-anonymity: only the SHA-1 prefix leaves the machine), with an offline common-password fallback |
 | `vault_integrity` | Verify the on-disk vault file decrypts correctly and matches the in-memory store |
 | `vault_merge` | Merge one entry into another; `keepSource: true` keeps the source after merging |
-| `vault_attach` / `vault_attachments` / `vault_attachment` / `vault_detach` | Attach files to entries (private keys, certs, configs, recovery codes) — stored base64 inside the encrypted entry, encrypted at rest; list names/sizes, read content, remove |
+| `vault_attach` | Attach a file as encrypted entry content. |
+| `vault_attachments` | List attachment names and sizes, not contents. |
+| `vault_attachment` | Read one attachment; its content can be sensitive. |
+| `vault_detach` | Remove an attachment from an entry. |
 | `vault_quick_add` | Fast capture (title + one secret) with optional tags/notes |
 | `vault_expiry` | Set/clear expiry (`expiresAt: 0` removes it) |
 | `vault_stats` | Overview counts incl. `trashCount` (no secrets) |
@@ -91,13 +421,13 @@ Favourites, tags, history, health, templates, attachments, card and 2FA detail.
 | `vault_duplicates` | Find duplicate groups: `mode` = `both` (default) / `title` / `content` (no secrets) |
 | `vault_report` | Printable inventory with expiry/rotation columns and a stats footer (no secrets) |
 | `vault_match_url` | Find login entries matching a URL (Bitwarden/1Password-style: exact host, subdomain, parent domain, path-prefix; www./port normalization) with a 0–100 score — never returns the password |
-| `vault_env` | Render env-flagged entries (tags contain `env`) as `KEY=VALUE` lines — see [Environment export](#environment-export) |
+| `vault_env` | Render env-tagged entries as shell-quoted KEY=VALUE lines; plaintext unless mask is requested. |
 | `vault_copy` | Copy an entry (secrets included) into another named vault |
 | `vault_templates` | Built-in + user-defined templates (save/list/remove), KeePassXC-style; built-ins now include Wi-Fi, Server, Database, Identity, Bank account, Card (1Password-inspired) |
 | `vault_notes` | Append to or replace the free-form notes of an entry (a convenient shortcut for vault_update) |
 | `vault_changes` | List vault activity within a time window (default 24h): entries created, updated, or soft-deleted, newest first |
 | `vault_find` | Fuzzy-find entries: matching ignores case, punctuation and whitespace, so `gh` reaches `GitHub` |
-| `vault_mask` | Redact likely credentials in arbitrary text (API keys, tokens, passwords, private keys) so it can be logged or quoted safely |
+| `vault_mask` | Heuristically redact likely secrets in text; not a proof that all sensitive information was found. |
 | `vault_history` | Show recent activity on the vault within this process, newest first: mutations (add/update/delete/restore/purge/merge/rollback) plus reads (read, totp), searches and vault switches. Records only the action, entry title and timestamp — never passwords, keys, usernames or other secret values |
 | `vault_recent` | List the most recently created or updated entries (newest first), as secret-free summaries |
 | `vault_pin` | Pin (favorite) an entry so it ranks first in search and list |
@@ -117,24 +447,26 @@ Favourites, tags, history, health, templates, attachments, card and 2FA detail.
 | `vault_undelete_all` | Restore ALL soft-deleted (trashed) entries back to the active set |
 | `vault_get_many` | Read multiple entries by id, returning only the requested fields for each |
 
-### Import & export (Full, or Custom → Import-export) — 27
-
-Migrating in and out of other password managers, bulk operations, and env/CSV/1Password/Bitwarden/KeePass/pass interop.
+### Import and export / Full or Custom — 27
 
 | Tool | Purpose |
 |---|---|
 | `vault_import_csv` | Bulk-import credentials from a CSV file (custom columns become fields; `overwrite: true` merges fields into existing entries instead of duplicating) |
 | `vault_bulk_delete` | Soft-delete entries matching a query/kind/tag or explicit ids; `confirm: true` required (dry-run by default); trashed entries are restorable |
-| `vault_export` / `vault_import` | Portable encrypted backup/migration of the whole vault (separate export password) |
-| `vault_export_bitwarden` / `vault_import_bitwarden` | Bitwarden/Vaultwarden JSON interop (full field mapping, overwrite support) |
+| `vault_export` | Portable encrypted backup/migration of the whole vault (separate export password) |
+| `vault_import` | Portable encrypted backup/migration of the whole vault (separate export password) |
+| `vault_export_bitwarden` | Bitwarden/Vaultwarden JSON interop (full field mapping, overwrite support) |
+| `vault_import_bitwarden` | Bitwarden/Vaultwarden JSON interop (full field mapping, overwrite support) |
 | `vault_import_bitwarden_encrypted` | Decrypt a Bitwarden password-protected JSON export (PBKDF2/Argon2id + HKDF → AES-256-CBC + HMAC) and import it; pass the export passphrase |
 | `vault_import_manager_csv` | Password-manager CSV auto-detected by header: Bitwarden (`login_uri`/`login_username`/…), 1Password 8, Dashlane, NordPass, Keeper, LastPass (`fav`/`grouping`/`extra`); dryRun preview |
 | `vault_import_kdbx` | KeePass KDBX: 3.1 and 4.x, AES-KDF or Argon2 (RFC 9106), AES-256-CBC or ChaCha20 payload, keyfile support |
 | `vault_export_1password` | Export entries as a 1Password 1PUX archive (ZIP + export.data) for import into 1Password or re-import here; item categories map to login / credit card / API credential / server |
-| `vault_import_1password` / `vault_import_1pif` | 1Password 1PUX (ZIP) and legacy 1PIF text exports |
+| `vault_import_1password` | 1Password 1PUX (ZIP) and legacy 1PIF text exports |
+| `vault_import_1pif` | 1Password 1PUX (ZIP) and legacy 1PIF text exports |
 | `vault_import_enpass` | Enpass JSON export (folders → tags, typed fields, TOTP) |
 | `vault_import_keepass_xml` | KeePass 2.x XML export (plaintext or `********` masked values) |
-| `vault_import_chrome` / `vault_import_keychain` | Import passwords from Chrome's Login Data (macOS keychain / Linux keyring or `peanuts` / Windows DPAPI) or the macOS Keychain (internet passwords `inet` by default — the ones that actually back website logins — or generic `genp` via `classes`; session cache + preview, no prompt spam); every file import supports `dryRun` preview |
+| `vault_import_chrome` | Import passwords from Chrome's Login Data (macOS keychain / Linux keyring or `peanuts` / Windows DPAPI) or the macOS Keychain (internet passwords `inet` by default — the ones that actually back website logins — or generic `genp` via `classes`; session cache + preview, no prompt spam); every file import supports `dryRun` preview |
+| `vault_import_keychain` | Import passwords from Chrome's Login Data (macOS keychain / Linux keyring or `peanuts` / Windows DPAPI) or the macOS Keychain (internet passwords `inet` by default — the ones that actually back website logins — or generic `genp` via `classes`; session cache + preview, no prompt spam); every file import supports `dryRun` preview |
 | `vault_import_firefox` | Firefox profile import (logins.json + key4.db, NSS 3DES / PBES2-AES, primary-password aware) |
 | `vault_export_totp` | List every entry that has a TOTP secret, with its title and issuer label |
 | `vault_bulk_export` | Export ALL entries (including secrets) as a JSON file for audit or migration |
@@ -147,14 +479,12 @@ Migrating in and out of other password managers, bulk operations, and env/CSV/1P
 | `vault_export_env` | Write env-flagged entries (tags contain "env") to a .env file at the given path as KEY=VALUE lines (values shell-quoted) |
 | `vault_export_csv` | Export vault entries to a CSV file (the same shape vault_import_csv accepts), optionally filtered by kind |
 
-### Browser sessions (Full, or Custom → Browser sessions) — 8
-
-Capturing and replaying cookie sessions; needs the optional `playwright-core`.
+### Browser sessions / Full or Custom — 8
 
 | Tool | Purpose |
 |---|---|
 | `vault_session_open` | Open a real headed browser window at a URL so the user can log in manually (password, 2FA, captcha) — the portable way to capture login state for sites that block embedding — requires the optional `playwright-core` |
-| `vault_session_collect` | Collect every cookie of an open browser session (incl. HttpOnly) and save it as a `cookie` entry |
+| `vault_session_collect` | Collect cookies from a plugin-opened login window and save a cookie entry; user login happens first. |
 | `vault_session_import` | Save session cookies from pasted JSON (devtools export shape) or a raw `Cookie` header string — the no-browser alternative |
 | `vault_session_import_file` | Import a Netscape cookie-jar file (curl `-b` / wget / browser-extension export; the same format `vault_session_export` writes) |
 | `vault_session_list` | List saved login sessions with cookie counts, expired and expiring-in-7d counts (no values) |
@@ -162,583 +492,99 @@ Capturing and replaying cookie sessions; needs the optional `playwright-core`.
 | `vault_session_close` | Close an open browser login session (collected cookies stay in the vault) |
 | `vault_session_prune` | Remove expired cookies from a saved session (session cookies are kept); `preview: true` reports without writing |
 
-### Backups & vault files (Full, or Custom → Backups & files) — 14
-
-Backups, vault switching, rekeying, recovery codes and system search.
+### Backups and vault files / Full or Custom — 14
 
 | Tool | Purpose |
 |---|---|
-| `vault_recovery_code` / `vault_verify_recovery` / `vault_recovery_status` | One-time vault recovery code (1Password/Bitwarden-style): 32-char code shown once, only its SHA-256 hash is stored; verify possession of the code; check whether one is set |
+| `vault_recovery_code` | Issue a code once and persist only its SHA-256 hash; regeneration invalidates the old code. This is NOT a decryption key or master-password reset. |
+| `vault_verify_recovery` | Check code possession against the saved hash; does not decrypt or unlock the vault. |
+| `vault_recovery_status` | Report whether a recovery code is set and its issue time; never the code. |
 | `vault_rekey` | Upgrade the vault to fresh scrypt KDF parameters in place |
 | `vault_switch` | Switch the active vault for this session |
-| `vault_backup` / `vault_backup_now` | Timestamped encrypted backup named `<vault>-backups-YYYY-MM-DD_HH-MM-SS-<hex>.json` (owning vault + date visible); retention pruning keeps the newest N (`maxBackups`, default 10) |
+| `vault_backup` | Create an encrypted local vault-file backup with bounded retention (default 10). |
+| `vault_backup_now` | Create an encrypted local backup immediately. |
 | `vault_restore_backup` | Restore from a backup: `mode: "merge"` (default) copies the backup entries INTO the current vault so they appear in the entries list; `mode: "replace"` overwrites the whole vault with a safety snapshot first |
-| `vault_vault_rename` / `vault_vault_delete` | Rename a named vault (file moves, active session follows) or permanently delete one (default vault protected) |
+| `vault_vault_rename` | Rename a named vault; the active vault follows the move. |
+| `vault_vault_delete` | Permanently delete a named vault file; default vault is protected. |
 | `vault_search_system` | Search Chrome / Keychain for sites & usernames — never exposes passwords |
 | `vault_backup_status` | Report how many days have passed since the last backup file was written (1Password-style backup reminder; new-style `<vault>-backups-<date>.json` and legacy `vault-backup-<epoch>.json` names are both recognized). Returns daysSinceBackup and a suggestion |
 | `vault_search_history` | Search including soft-deleted (trashed) entries, marked with their deleted state |
-| `vault_backups` | List available encrypted `vault-backup-*.json` files (newest first) with their absolute paths and timestamps |
-
-**Typical workflows**: store an SSH credential (`kind: ssh` + host/port/username/password or privateKey) and have the model `vault_search` for the host then `vault_get` the connection details; keep `api-key`/`oauth` entries for API-gateway access/refresh token rotation.
-
-## Automatic cloud backups (added in this branch)
-
-Settings → Vault → Backup supports private GitHub repositories, S3, Alibaba OSS and Cloudflare R2. Opt-in on-change/interval uploads send encrypted vault snapshots, with multiple destinations, runtime status, manual retry and bounded remote retention. Credentials are environment-variable references only. This is not multi-device sync; Git history and object versions can retain old ciphertext. See the [cloud backup guide](docs/cloud-backup.md) for setup, permissions, limitations and recovery.
-
-## Installation
-
-dsh-vault is a **bundle** (a package declaring `dsh.bundle`): once installed into a profile, its `cordis.patch.yml` automatically inserts the `vault` plugin row (referenced by package name `dsh-vault`; the master password is injected via the `DSH_VAULT_PASSWORD` environment variable). The package ships a self-contained build script — git installs compile `lib/` automatically.
-
-All four install paths below are **verified end-to-end** (install → bundle layer recognized → plugin activates with all 7 `vault_*` tools registered → real `vault_add`/`vault_get` round trip → uninstall removes the layer):
-
-| Path | Command | Build needed | `allowBuilds` |
-|---|---|---|---|
-| npm | `add dsh-vault` | no (prebuilt `lib/`) | no |
-| GitHub | `add github:Ox0400/dsh-vault#v0.1.1` | yes (`prepare`) | yes (first run) |
-| local path | `add /abs/path/to/dsh-vault` | no (link to built source) | no |
-| tarball | `add ./dsh-vault-0.1.1.tgz` | no (prebuilt `lib/`) | no |
-
-### Option 1: Install from npm (easiest)
-
-```sh
-dsh plugin --profile web add dsh-vault
-```
-
-npm packages ship **prebuilt `lib/` artifacts** — no allowBuilds, no local compilation, install and go. Set the master password before launching:
-
-```sh
-export DSH_VAULT_PASSWORD='your strong master password'
-```
-
-### Option 2: Install from GitHub (pin a tag or commit)
-
-```sh
-dsh plugin --profile web add github:Ox0400/dsh-vault#v0.1.1
-```
-
-A git install fetches **sources, not built artifacts**, so the `prepare` script builds `lib/` at install time. pnpm ≥10 blocks git dependencies from running build scripts by default. The verified flow:
-
-1. Run the `add` command — it fails with an `allowBuilds` error and prints the exact key to allow (the line containing the repo URL, including the resolved commit hash):
-
-   ```text
-   allowBuilds:
-     dsh-vault@https://codeload.github.com/Ox0400/dsh-vault/tar.gz/<sha>: true
-   ```
-
-2. Append that exact key to the profile's `pnpm-workspace.yaml` (`$DSH_HOME/profiles/<name>/pnpm-workspace.yaml`):
-
-   ```yaml
-   packages:
-     - .
-   allowBuilds:
-     dsh-vault@https://codeload.github.com/Ox0400/dsh-vault/tar.gz/<sha>: true
-   ```
-
-3. Re-run the `add` — pnpm now runs the `prepare` script, builds `lib/`, and installs.
-
-**Pin a tag/commit** so a later upstream push cannot silently change what runs on install. Treat the allowance for what it is: permission to execute that package's code on your machine at install time — only grant it to sources you trust.
-
-### Option 3: Install from a local path
-
-```sh
-dsh plugin --profile web add /absolute/path/to/dsh-vault
-```
-
-pnpm links the checkout into the profile; the bundle is recognized as long as `lib/` exists (run `pnpm build` in the checkout first if needed).
-
-### Option 4: Install from a tarball
-
-```sh
-npm pack && dsh plugin --profile web add ./dsh-vault-0.1.1.tgz
-```
-
-The tarball ships prebuilt `lib/` artifacts, so no build step or `allowBuilds` is required.
-
-`dsh plugin --profile web remove dsh-vault` uninstalls (removes both the dependency and the layer).
-
-## Command line
-
-The plugin hands the vault to the assistant. The bundled `dsh-vault` command
-hands the same vault to shells and scripts, so a skill's child process can read
-a secret **without the plaintext ever entering the model's context**.
-
-### 0. First: which command can you actually type?
-
-**Nothing provides a `dsh-vault` binary until the package is installed** — the
-plugin is a Cordis bundle, and `dsh` has no plugin-subcommand registry (the
-launcher parses only its own flags; `dsh plugin …` just forwards to pnpm, so
-`dsh web exec …` hands its arguments to the web app and fails with
-`error: too many arguments`). Pick your row before reading the examples:
-
-| your setup | the command |
-|---|---|
-| **source checkout** (`git clone` + `pnpm build`) | **`pnpm vault`** — or `node lib/cli.js`, or `./lib/cli.js` |
-| plugin **installed into a profile** | `pnpm dsh plugin --profile web exec dsh-vault` |
-| **globally installed** (`npm i -g dsh-vault`) | `dsh-vault` |
-| **nothing installed** | `npx dsh-vault` |
-
-```sh
-# source checkout — this repository, right now:
-pnpm vault list
-
-# after a global install (or via npx) the same commands are:
-dsh-vault list
-npx dsh-vault list
-```
-
-Every example below is written as `dsh-vault …`; substitute the form from your
-row (`pnpm vault …` in a checkout).
-
-### 1. What `env` is for
-
-`get` fetches **one** value and needs no tag. `dsh-vault env` is for the other
-case: a script that needs **several** secrets at once. It prints the entries you
-tagged `env` as shell assignments, so the script picks them up itself:
-
-```
-$ dsh-vault env
-DEMO_API_KEY='sk-demo-123'
-OTHER_PASSWORD='pw-not-exported'
-```
-
-`eval "$(dsh-vault env)"` reads those assignments into the **current shell** —
-the usual reason to reach for it:
-
-```sh
-eval "$(dsh-vault env)"          # KEY=VALUE lines become shell variables
-echo "$DEMO_API_KEY"
-```
-
-Two things worth knowing:
-
-- **Only `env`-tagged entries are exported.** With none tagged you get
-  `dsh-vault: nothing to export — no entry carries the "env" tag.`; tag one in the UI (the
-  entry's tags field) or with `vault_update { id, tags: ["env"] }`.
-- The name is derived from the title and field (`DASHSCOPE` + `apiKey` →
-  `DASHSCOPE_API_KEY`) unless the entry sets `envKeys` — see
-  [Environment export](#environment-export).
-
-
-**Names — there are only three, and two of them are the word `env` on purpose:**
-
-| name | what it is | meaning |
-|---|---|---|
-| `env` | an entry **tag** | which entries `dsh-vault env` exports; nothing is exported without it |
-| `env` | the **command** | prints exactly the entries carrying that tag |
-| `envKeys` | an entry **field** (optional) | pin exact names, e.g. `["DASHSCOPE_API_KEY"]`; the old singular `envKey` is accepted as a one-element shorthand |
-
-Nothing else is called `env*`: `list --json` / `show` report `envKeys` (the names
-an entry exports — what `get` accepts), `envTagged` (whether `env` includes it)
-and `hasTotp` (whether `totp` can produce a code for it).
-
-### 2. The commands
-
-```sh
-dsh-vault list                             # grouped: what `env` exports vs the rest
-#   Exported by `env` (tag "env") — 1 entry:
-#     a1b2c3d4-…  api-key   DASHSCOPE        → DASHSCOPE_API_KEY
-#   Not exported (no "env" tag) — 1 entry; `get <name>` still works for it:
-#     9f8e7d6c-…  api-key   Example Billing  → EXAMPLE_BILLING_API_KEY
-dsh-vault get my-entry                     # the entry's primary secret, stdout only
-dsh-vault get my-entry --field apiKey      # one named field
-dsh-vault get my-entry --mask              # confirm it exists without printing it
-dsh-vault show my-entry                    # non-secret metadata as JSON
-dsh-vault totp my-entry                    # the current TOTP code (digits only)
-dsh-vault totp my-entry --json             # + digits, period, secondsRemaining
-dsh-vault env                              # env-tagged entries as KEY=VALUE
-dsh-vault env --mask                       # human view, both sections as KEY=VALUE:
-#   ## exported items
-#   NPM_REGISTRY_API_KEY=npm_***
-#   ## unexported items
-#   EXAMPLE_BILLING_API_KEY=***
-dsh-vault export-env .env                  # …or write them to a 0600 file
-dsh-vault verify                           # check the master password, nothing on stdout
-```
-
-Secrets go to stdout and everything else (progress, errors) to stderr, so
-`$(dsh-vault get …)` and pipelines behave. Exit codes: `0` ok, `1` runtime
-error, `2` usage error.
-
-`totp` exists so a script can automate two-factor login without ever handling the
-long-lived secret: `code=$(dsh-vault totp my-entry)` prints six digits and nothing
-else. `get my-entry --field otpSecret` would print the **secret** instead — use it
-only when a tool genuinely needs to enrol the secret elsewhere. `--json` adds
-`secondsRemaining`, which is what lets a caller wait for a fresh window rather
-than race an expiring code.
-
-### 3. Shell quoting: not `export $(…)`
-
-`eval "$(dsh-vault env)"` is right; `export $(dsh-vault env)` is wrong. Command
-substitution splits on whitespace and does **not** strip the quotes the CLI
-emits, so a value containing a space breaks into the wrong words and every value
-keeps its literal quotes:
-
-```sh
-$ export $(dsh-vault env); echo "$WITH_SPACE"
-['pass]                     # split at the space
-bash: export: `here': not a valid identifier
-$ eval "$(dsh-vault env)"; echo "$WITH_SPACE"
-[pass word here]            # read as intended
-```
-
-In a script, prefer the file form — no `eval` at all:
-
-```sh
-dsh-vault export-env .env && set -a && . ./.env && set +a
-```
-
-### 4. The master password
-
-`--password-stdin`, then `$DSH_VAULT_MASTER_PASSWORD` (or `$DSH_VAULT_PASSWORD`),
-then an interactive prompt that **hides what you type** (the terminal is switched
-to raw mode; verify with `tests/e2e/cli-prompt.mjs`). It is **not** read from the plugin's config file, so
-the CLI never depends on (or leaks) whatever the profile patch holds:
-
-```sh
-DSH_VAULT_MASTER_PASSWORD=… pnpm vault list
-printf '%s\n' "$PASSWORD" | pnpm vault list --password-stdin
-```
-
-### 5. Install details
-
-**Source checkout:**
-
-```sh
-git clone git@github.com:Ox0400/dsh-vault.git && cd dsh-vault
-npm install && npm run build            # builds lib/, including executable lib/cli.js
-
-pnpm vault list                         # the repo's own entry point (package.json script)
-node lib/cli.js list                    # same thing, spelled out
-./lib/cli.js list                       # the file is executable too
-npm link                                # …or put a real `dsh-vault` on PATH
-```
-
-To develop the *plugin* against a profile you also link the checkout into the
-profile and add a patch layer that inserts it (how this repository is normally
-developed); **the CLI needs none of that** — it reads the vault file directly. A
-hand-linked plugin has no `.bin/dsh-vault` shim, so `pnpm … exec` reports
-`Command "dsh-vault" not found` unless you install it as a dependency
-(`pnpm dsh plugin --profile web add dsh-vault`) or create the shim by hand:
-
-```sh
-ln -sf ../dsh-vault/lib/cli.js ~/.dsh/profiles/web/node_modules/.bin/dsh-vault
-```
-
-**npm install:**
-
-```sh
-pnpm dsh plugin --profile web add dsh-vault          # into a profile (plugin + CLI together)
-pnpm dsh plugin --profile web exec dsh-vault list    # --profile is required
-
-npm i -g dsh-vault && dsh-vault list                 # globally
-npx dsh-vault list                                   # or not at all
-```
-
-The read commands (`list`, `get`, `env`, `show`, `totp`, `verify`, `export-env`) depend
-on Node alone, which is why the global and `npx` forms work. Only *writing* to a
-vault needs the harness runtime, and the plugin always has it.
-
-Two more caveats on the profile route: its `.bin` shim can be pruned by a later
-`pnpm install`, and `pnpm dsh plugin --profile web add dsh-vault` reconciles
-`dsh.profile.bundles` from the package's `dsh.bundle` declaration — if your own
-patch layer *also* inserts the plugin, that mounts it twice, so remove the patch
-row first.
-
-## Privacy of the breach check
-
-`vault_breach_check` (and the security page) can check passwords against Have I
-Been Pwned. Exactly one thing leaves this machine:
-
-```
-GET https://api.pwnedpasswords.com/range/<FIRST 5 HEX CHARS OF SHA-1(password)>
-Add-Padding: true
-```
-
-The response lists every suffix in that bucket (hundreds of hashes) and the match
-is computed **locally** — the full hash, the password, and the entry it belongs to
-never leave. A password already in the bundled common-password list is answered
-offline and produces **no request at all**; repeat lookups of the same prefix are
-cached in memory for an hour.
-
-What k-anonymity does *not* hide, stated plainly:
-
-- the **five-character prefix** (20 bits, one bucket in ~1M) goes to Cloudflare,
-  together with your IP;
-- an observer who can guess candidate passwords can compute each candidate's
-  prefix and see whether you queried that bucket — that is the known limit of
-  this protocol, not something the header fixes;
-- `Add-Padding` only removes the *response-size* signal (without it, a bucket's
-  response length correlates with how common the password is).
-
-To keep even the prefix on your machine, pass `online: false` — the check then
-uses only the offline list, which is far smaller, so treat it as a screening aid
-rather than a verdict.
-
-## Strength indicator
-
-Each entry row shows a three-star indicator after its title — **☆☆☆ = 0 score,
-★★★ = full marks** — in six half-star steps:
-
-![strength indicator: the seven states](docs/strength-stars.svg)
-
-A half star is a real half-filled star, not a `½` next to it: the coloured copy
-of the same three glyphs is clipped to a percentage, and `★`/`☆` share an advance
-width so the clip lands exactly on a star boundary.
-
-| score | filled stars | band |
-|---|---|---|
-| 0–8 | 0 | weak |
-| 9–24 | ½ | weak |
-| 25–41 | 1 | weak |
-| 42–58 | 1½ | fair |
-| 59–74 | 2 | fair |
-| 75–91 | 2½ | strong |
-| 92–100 | 3 | very strong |
-
-Hovering it shows the exact score and verdict. The score is computed **host-side**
-(the list never receives the secret) and covers the entry's **password or card
-PIN**; machine-generated API keys and private keys are deliberately not scored,
-so every key does not sit at full marks.
-
-## Environment export
-
-Entries tagged `env` can be materialised as `KEY=VALUE` lines (`vault_env`,
-`vault_export_env`), and their names follow the field names every toolchain
-expects:
-
-| Entry | Exported key |
-|---|---|
-| title `DASHSCOPE`, `apiKey` | `DASHSCOPE_API_KEY` |
-| title `DASHSCOPE`, `prefix: APP_` | `APP_DASHSCOPE_API_KEY` |
-| `envKey: "TAVILY_TOKEN"`, `accessToken` | `TAVILY_TOKEN` |
-| …the same entry's `refreshToken` / `fields.scope` | `TAVILY_TOKEN_REFRESH_TOKEN` / `TAVILY_TOKEN_SCOPE` |
-
-- The field suffix is vendor-standard: `apiKey → API_KEY`, `accessToken →
-  ACCESS_TOKEN`, `refreshToken → REFRESH_TOKEN`, `privateKey → PRIVATE_KEY`,
-  `password → PASSWORD`, `cardNumber → CARD_NUMBER`.
-- Set an entry's **env-var names** (optional field `envKeys`, also via
-  `vault_add`/`vault_update`, or comma-separated in the editor) when the derived
-  names are not what your scripts expect. They are **positional** and used
-  **verbatim** (no prefix, no title):
-
-  | `envKeys` | exported |
-  |---|---|
-  | `["DASHSCOPE_API_KEY"]` | `DASHSCOPE_API_KEY=apiKey` |
-  | `["GOOGLE_ACCESS_TOKEN", "GOOGLE_REFRESH_TOKEN"]` | `...=accessToken`, `...=refreshToken` |
-  | `["MY_KEY"]` on an entry with 3 secrets | `MY_KEY`, `MY_KEY_REFRESH_TOKEN`, `MY_KEY_SCOPE` |
-
-  Each name must be a POSIX identifier (`[A-Za-z_][A-Za-z0-9_]*`), at most 8,
-  and no duplicates. `envKey` (singular string) is still accepted as a
-  one-element shorthand and is folded into `envKeys` on write.
-- Custom fields are exported too, as `<BASE>_<FIELD>`.
-
-> Upgrading: keys changed from `DASHSCOPE_APIKEY` to `DASHSCOPE_API_KEY` in
-> 1.10.64 to match vendor conventions. Set `envKey` on an entry to pin an exact
-> name if a script depends on the old spelling.
-
-## Tool profiles
-
-The plugin ships 110+ model tools, but **registers only 11 core tools by default** (`vault_list/search/get/add/update/delete/fill/clipboard/totp/generate_password/strength`) to keep the model's tool catalog small and cheap.
-
-Switch profiles in **Settings → Credentials → Permissions → Model tools** — it applies instantly (no restart) and is persisted per vault:
-
-| Profile | Registers |
-|---|---|
-| **Basic** (default) | core only — everyday use |
-| **Standard** | + management: favourites, tags, icons, expiry/rotation, health, duplicates/merge, attachments, templates, env masks |
-| **Full** | everything, incl. bulk import/export, browser sessions, backups and vault-file operations |
-| **Custom…** | core + any of: Management / Import-export / Browser sessions / Backups & files |
-
-`tools: basic|standard|full|custom` can also be set in the plugin config; the UI choice wins and is stored in `<vault dir>/tools.json` (the process-wide tool catalog is not per vault).
-
-## Password Manager (1pass) Settings — v1.11.0
-
-Enable the plugin and open **Settings → 密码管理(1pass)**. The workbench adopts dsh-config-manager’s layout and interaction model: four primary destinations, measured More overflow, command search, full-width tasks, scoped dialogs and compact host-theme controls. Existing vault, TOTP, attachments, import/export, cloud backups, audit and trash remain available. See [GUI reference notes](docs/gui-reference.md) and [NOTICE](NOTICE).
-
-With no master-password environment variable, the plugin now mounts a first-use create/unlock form instead of failing startup. The masked password is held only in the current DSH process; it is not written into plugin configuration, browser storage, or model-tool arguments. Enter it again after the host restarts. Existing masterPasswordEnv deployments remain supported. Weak nonempty passwords are accepted; strength indicators are advisory only.
+| `vault_backups` | List encrypted backup paths/timestamps, recognizing current and legacy names. |
 
 ## Configuration
 
-> [!WARNING] Security: never put the master password in plaintext
-> A profile patch (`cordis.patch.yml` / `cordis.yml`) is a config file that is
-> easy to commit to git, screenshot, or capture in logs — so a plaintext
-> `masterPassword:` row leaks the key to your whole encrypted vault. Always use
-> `masterPasswordEnv` and export the real password into the process/shell
-> environment instead (e.g. `export DSH_VAULT_PASSWORD='…'`). See the
-> [community-plugin-audit handbook](https://github.com/sandbaseai/deepseek-harness-handbook/blob/main/docs/en/security/community-plugin-audit.md)
-> for the evidence-first checklist for credential-handling plugins.
->
-> ```yaml
-> # ✗ DON'T — plaintext master password in a config file
-> - id: vault
->   name: dsh-vault
->   config:
->     masterPassword: 'my-secret'
-> ```
->
-> ```yaml
-> # ✓ DO — reference an environment variable; keep the file itself 0600
-> - id: vault
->   name: dsh-vault
->   config:
->     masterPasswordEnv: DSH_VAULT_PASSWORD
-> ```
+For a normal GUI setup, use the first-use password form. For deliberate environment-based deployments, keep **only the variable name**, never its value, in the profile:
 
-| Option | Description |
-|---|---|
-| `masterPassword` | The master password inline (appears in cordis.yml; not recommended) |
-| `masterPasswordEnv` | Environment variable name holding the master password (recommended) |
-| `path` | Vault file path; defaults to `$DSH_HOME/vault/default.json` |
-| `name` | Vault name for the default path (e.g. `name: work` → `$DSH_HOME/vault/work.json`) |
-| `accessMode` | Access policy for the model tools. Three states: `readonly` (mutations rejected on tools + UI), `ask` (default — reads free, every add/update/delete goes through the harness approval channel so the user confirms each write), or `auto` (automatic read-write, no per-call prompt). The Settings UI offers this exact three-way choice and persists it to `<vault dir>/access.json`. |
-| `autoCapture` | `false` (default). When `true`, the system prompt instructs the model to detect credentials shared in conversation and — per user preference — offer to save them with `vault_add`. |
-| `lockTimeoutSeconds` | Auto-lock: after this many seconds of inactivity the vault re-locks (key wiped) and every read/write requires `vault_unlock`. `0`/absent disables. |
-| `exportPasswordEnv` | Environment variable holding the export/import password for `vault_export`/`vault_import` (never pass it as a model argument). |
-| `backupRetention` | How many encrypted backups to keep (default 10); `vault_backup` prunes older copies. |
-
-Example:
-
-```yaml
+~~~yaml
 - id: vault
   name: dsh-vault
   config:
     masterPasswordEnv: DSH_VAULT_PASSWORD
     accessMode: ask
-    autoCapture: true
-```
+    autoCapture: false
+    tools: basic
+    lockTimeoutSeconds: 300
+~~~
 
-With `autoCapture: true`, when you share a credential in chat (e.g. "my npm token is npm_…"), the assistant offers to store it; on your consent it calls `vault_add` immediately. With `autoCapture` off, credentials are only saved when you explicitly ask. The Settings UI shows the current mode (read-only / ask-before-write / automatic read-write) with a dropdown to switch it, an **auto-capture toggle** (detect credentials shared in chat → offer to save), a kind filter, a health & rotation summary, a trash view, and masked secret fields with a Show/Hide toggle.
+The installed bundle already supplies a vault row; this is its configuration shape, not a request to add another duplicate row.
 
-The vault is created automatically on first tool use; every launch re-unlocks with the master password. **Forgetting the master password = permanent data loss** (no backdoor — by design).
+| Option | Meaning |
+|---|---|
+| masterPasswordEnv | Host environment variable naming the unlock material; must be available to that host process |
+| masterPassword | Inline secret supported for compatibility, **not recommended**; plaintext configs leak through source control/backups/screenshots |
+| path / name | Explicit vault path or name; default DSH_HOME/vault/default.json |
+| accessMode | readonly / ask (default) / auto; persisted GUI policy overrides fallback config |
+| autoCapture | false by default; offer credential capture only with user consent |
+| lockTimeoutSeconds | Idle-lock timeout; 0/absent disables; GUI policy can override |
+| tools | basic / standard / full / custom; persisted profile choice wins |
+| exportPasswordEnv | Environment-variable reference for separate portable export/import password |
+| backupRetention | Encrypted local backup count, default 10 |
 
-## Development
+Protect configuration and vault directories with appropriate POSIX permissions or Windows ACLs. An environment reference reduces accidental source-file exposure; it does not hide the secret from the host process or same-user tooling.
 
-Clone and develop locally:
+## Troubleshooting
 
-```sh
-git clone git@github.com:Ox0400/dsh-vault.git
-cd dsh-vault
-pnpm install    # installs devDependencies (typescript/tsdown/vitest, …)
-pnpm build      # builds host lib/*.js and the browser bundle lib/client.js
-pnpm test       # runs the 506 vitest tests
-```
+| Symptom | Check next |
+|---|---|
+| Settings section absent | Plugin enabled in the profile actually serving this DSH; host and client artifacts built/loaded; no duplicate plugin row |
+| Locked after restart | Re-enter the master password in the local form or configure the intended host environment; do not ask an assistant to receive it |
+| CLI command not found | Use source invocation or a normal installed profile/global executable; a linked checkout may lack a shim |
+| CLI cannot unlock though GUI can | Separate process: check its vault path and authorized password input, not the GUI status |
+| No env values | Only env-tagged entries are exported; inspect list and env --keys-only |
+| A tool is missing | Basic registers 11; switch to Standard, Full or a narrow Custom group deliberately |
+| Import cannot confirm | Vault unlocked/writable, preview fresh and selection valid; locked/stale/changed-input previews must be regenerated |
+| Git read works, push fails | Read probe is not write permission; inspect token/SSH scope, selected repository/branch and local ahead/diverged facts; no force push |
+| Sync says local/remote changed | Refresh state, inspect conflicts and generate a new preview; do not reuse old approval |
+| Colors/text look wrong after update | Refresh the existing DSH page after installing rebuilt artifacts; starting an unrelated server does not update it |
+| Recovery code verified but vault still locked | Expected: code-possession proof is not decryption or a password reset |
 
-> Tests need harness peer packages such as `dsh-llm`/`dsh-system-prompt`; inside the harness monorepo these resolve via workspace links.
+## Development and publishing
 
-The brand marks in the credential list are 68 SVG paths inlined into the browser bundle — no runtime dependency and no network call. They are generated, and the generator is committed:
+Project scripts are declared in [package.json](<package.json>); no fixed test-count claim is made here.
 
-```sh
-npm i --no-save simple-icons@16      # 15 MB, dev-only: never a dependency of this package
-pnpm gen:icons                       # refreshes src/client/site-icons.ts
-pnpm gen:icons -- --check            # exits 1 when the table is stale
-```
+~~~sh
+npm run typecheck
+npm test -- tests/readme-tools.spec.ts
+npm test
+npm run build
+npm run scan:secrets
+npm pack
+~~~
 
-Only the glyph table is rewritten; the host→brand map (`gist.github.com`, `console.cloud.google.com`) is curated knowledge and is preserved. Brands that simple-icons has since removed (`amazonaws`, `slack`, `linkedin`, …) are kept and reported rather than dropped.
+The focused README test checks exact coverage, five-group membership and heading counts against the registered source tools. Broader tests/builds belong to the release owner; running a synthetic fixture does not verify your real cloud account.
+Inspect the tarball contents before distribution, retain license notices, never commit real vaults/env files/recorded credentials, and publish/push only with the owner's authorization. Local source version, npm publication and GitHub Releases are three distinct states.
+Browser-session support is optional; importing a password-manager file does not prove every source format/platform combination works on your machine. Keep the original export safely until a test restore is verified.
 
-Common commands:
+## Further reading and license
 
-```sh
-pnpm test          # unit + integration tests (vitest, 506)
-pnpm typecheck     # tsc -p tsconfig.json --noEmit
-pnpm build         # = build:host (tsc) + build:client (tsdown)
-npm pack           # optional: tarball for `dsh plugin add ./dsh-vault-0.1.1.tgz`
-```
+- [English GUI guide](<docs/gui-guide.md>) · [简体中文 GUI 指南](<docs/gui-guide-zh.md>)
+- [/1pass skill source](<skills/1pass/SKILL.md>)
+- [Editor, TOTP and quick-import implementation notes](<docs/credential-editor-quick-import.md>) (Chinese)
+- [Current cloud-sync notes](<docs/cloud-sync.md>) (Chinese) · [Transport contracts](<docs/cloud-sync-transports.md>) (English)
+- [Legacy one-way cloud backups](<docs/cloud-backup.md>) · [GUI integration/reference notes](<docs/gui-reference.md>)
+- [Master-key custody design draft—not an implemented feature](<docs/master-key-custody.md>) (Chinese)
+- [MIT license](<LICENSE>) · [Third-party notices](<NOTICE>)
 
-All 506 tests pass (crypto / TOTP / password generation / store CRUD / gateway / integration).
+The workbench and sync UI include attributed MIT-derived dsh-config-manager components. This does not imply affiliation with that project, DSH, or 1Password.
 
-Browser checks run against a real `dsh web` instead of vitest, and every one of
-them refuses to operate on the default vault:
-
-```sh
-node tests/e2e/theme-check.mjs      # dual-theme tokens, ring track, attach row
-node tests/e2e/polish-check.mjs     # empty-state copy, relative-age hover hints
-node tests/e2e/contrast-audit.mjs   # WCAG sweep over all eight tabs, both themes
-```
-
-See `tests/e2e/README.md` for the safety rules and for the two traps that make a
-contrast audit lie (serialised `color(srgb …)` values, and `opacity` counting as
-part of the colour).
-
-## Keeping credentials out of public content
-
-Everything in this repository is public — the npm tarball, the GitHub releases,
-the issue and discussion posts. Before publishing, `pnpm scan:secrets` checks
-the working tree, the tracked files and the commit messages for anything that
-looks like a credential, and `pnpm scan:public` additionally checks every
-release and comment already posted. The local half also runs in `pnpm test`, so
-a committed secret fails CI rather than shipping.
-
-## Theming
-
-The UI reads the host's design tokens instead of hard-coded colours. A local
-semantic layer maps onto the real `--dsw-alias-*` namespace, with literal
-fallbacks so the page still renders outside DeepSeek Harness:
-
-```css
---v-text: var(--dsw-alias-label-primary, #1f2328);
---v-border: var(--dsw-alias-border-l2, #d9d9d9);
---v-success-text: color-mix(in srgb, var(--v-success) 55%, var(--v-text));
-```
-
-Because the aliases flip with `body[data-ds-dark-theme]`, light and dark follow
-the host automatically — there is no second stylesheet and no theme prop.
-
-Two rules the layer exists to enforce:
-
-- **Never use `state-*-primary` as body text.** Those tokens are tuned for fills
-  and icons: on white they measure 2.28:1 (success) and 2.15:1 (warn), far below
-  WCAG AA. The `--v-*-text` variants mix them towards the theme's own text colour,
-  so one declaration darkens on light and lightens on dark (light 5.8/5.6/7.5:1,
-  dark 12+/11+/6.5:1).
-- **Never dim text with `opacity`.** `opacity: .8` turns a 5.8:1 colour into
-  3.9:1. Express "secondary" with a token (`--v-text-2`), not with transparency.
-
-`tests/e2e/contrast-audit.mjs` verifies both across every tab in both themes.
-
-## Packaging & Publishing
-
-This package is a standard npm bundle:
-
-- `dsh.bundle.patch` → `cordis.patch.yml` (the layer applied automatically when a profile lists this bundle)
-- `dsh.client` → browser-side declaration (`exports["./client"]` points at `lib/client.js`)
-- `prepare` script → self-contained build on git install (`tsc` host + `tsdown` client)
-- No runtime `dependencies`: what the host provides arrives through `peerDependencies`, so there are
-  no duplicate instances. `playwright-core` — needed only by browser login sessions, and lazily
-  `require`d — is an **optional** peer, so a normal install does not download it (~13 MB). Install it
-  into your profile when you want those tools: `cd ~/.dsh/profiles/web && npm i playwright-core`
-
-Distribution options:
-
-```sh
-npm pack                  # tarball → dsh plugin add ./dsh-vault-0.1.1.tgz
-npm publish --access public   # registry → dsh plugin add dsh-vault
-```
-
-## Security Boundaries & Known Limitations
-
-### What this protects
-
-- **A vault file that leaves the machine** — a backup, a synced folder, a stolen disk. Entries are AES-256-GCM encrypted under a key derived from the master password with scrypt (N=32768, r=8, p=1, persisted in the document and raisable later; old documents stay decryptable).
-- **Other users on the same machine** — the vault and every file the CLI writes are `0600`.
-- **Secrets reaching the model's context by accident** — `vault_search` / `vault_update` never return passwords, keys or tokens, and the CLI exists so a script can read a secret without it passing through a conversation.
-- **A password embedded in config**, when you use `masterPasswordEnv` instead of `masterPassword` (see the warning above).
-
-### What this does not protect
-
-- **Another plugin in the same host process.** dsh-vault is itself a plugin: it runs in-process with the harness and decrypted entries live in that process's memory. `readonly` / `ask` / `auto` constrain **the model's tool calls** — they do not isolate plugins from one another. The harness states the same limit for its own credential store: agent tool processes run as your OS user, so it "cannot isolate secrets from the agent" ([`@deepseek-ai/dsh-credentials-local`](https://github.com/deepseek-ai/deepseek-harness/tree/main/packages/credentials/credentials-local)). Only running plugins out-of-process would change this, and no plugin can enforce that by itself.
-- **A compromised machine or user account** — a keylogger, a debugger attached to the harness process, or anything else running as you.
-- **A master password you typed into a file, a screenshot or a shell history.** Hence `masterPasswordEnv`.
-- **What the model does with a value you let it read.** `vault_get` returns it into that tool call's result, which is model context; `vault_search`/`vault_update` never expose one.
-
-### Reducing the exposure
-
-`lockTimeoutSeconds` auto-locks an idle vault and `vault_lock` locks it on demand; both wipe the in-memory key. A master key held by the OS keychain (macOS Keychain / Windows Credential Manager / libsecret) would take the plaintext password out of config and environment files — the exposure that survives a disk copy — but it would **not** create an in-process boundary, because a plugin running as you can ask the keychain for the same item. The DSH project lists an OS-keychain credentials provider as deferred work.
-
-Known limitation: this plugin targets single-machine / personal deployments; team-shared vaults are out of scope.
-
-## Listed in
-
-- [awesome-dsh-plugin](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin#L2869) — official curated directory (Security & Safety section)
-- [awesome-deepseek-harness (Dominic789654)](https://github.com/Dominic789654/awesome-deepseek-harness#L903) — community directory (Security section)
-
-Submissions pending maintainer review: [Anil-matcha/awesome-dsh-plugin #127](https://github.com/Anil-matcha/awesome-dsh-plugin/pull/127) · [0xsline/awesome-deepseek-harness #563](https://github.com/0xsline/awesome-deepseek-harness/pull/563) · [dsh-handbook #65](https://github.com/Electricitysheep/dsh-handbook/pull/65)
+[English](<README.md>) | [简体中文](<README-zh.md>) · [Back to contents](#contents)

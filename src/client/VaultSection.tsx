@@ -8,10 +8,15 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNod
 import type { VaultTranslate } from './host-contracts.ts'
 import type { VaultLocaleKey } from './locales.ts'
 import type { CloudBackupSettings, CloudBackupView } from '../cloud-backup-types.ts'
+import type { QuickImportApi } from '../quick-import-types.ts'
+import { CloudSyncPanel } from './CloudSyncPanel.tsx'
+import type { CloudAccessReason } from './vault-access.ts'
 import { CloudBackupPanel } from './CloudBackupPanel.tsx'
 import { siteGlyph } from './site-icons.ts'
 import { judgePasswordRisk } from './password-risk.ts'
-import { localDateTimeValue, templateHints, templateKind } from './editor-form.ts'
+import { credentialPatch, droppedDraftSecrets, emptyCredentialForm, entryToForm, existingExtraFields, localDateTimeValue, restrictForm, safeTemplateFields, templateHints, templateKind, validateCredentialForm, type EditorErrors } from './editor-form.ts'
+import { ADVANCED_FIELDS, credentialSchema, inactiveSshFields, inferSshAuth, isSecretField, templateSshAuth, type CredentialField, type CredentialTemplate, type FormFields, type SshAuth } from './credential-fields.ts'
+import { editorEn, type EditorLocaleKey } from './editor-locales.ts'
 import { strengthTone, strengthUnits, strengthWidthPercent } from './strength-stars.ts'
 import { useWorkbenchDialogs } from './workbench/useWorkbenchDialogs.tsx'
 import type { VaultTab } from './workbench/workbench-model.ts'
@@ -54,6 +59,10 @@ export interface VaultFullWire {
   host?: string
   port?: string
   privateKey?: string
+  sshAuth?: 'password' | 'certificate'
+  ip?: string
+  certificate?: string
+  keyPassphrase?: string
   apiKey?: string
   secret?: string
   accessToken?: string
@@ -85,6 +94,9 @@ export type VaultPatch = Partial<Omit<VaultFullWire, 'id'>>
 
 /** Registration-side business face supplied by the plugin entry. */
 export interface VaultSectionInjected {
+  previewQuickImport?: QuickImportApi['previewQuickImport']
+  commitQuickImport?: QuickImportApi['commitQuickImport']
+  discardQuickImport?: QuickImportApi['discardQuickImport']
   t: VaultTranslate
   setupStatus?: () => Promise<{ configured: boolean; exists: boolean }>
   openWithPassword?: (password: string) => Promise<{ locked: boolean; entries: number }>
@@ -108,6 +120,7 @@ export interface VaultSectionInjected {
   backupStatus: () => Promise<{ daysSinceBackup: number; backups: number }>
   backup: (maxBackups?: number) => Promise<{ path: string; kept: number; pruned: number }>
   /** Optional so older hosts and injected fixtures keep working. */
+  cloudSyncCall?: (action: string, payload?: unknown) => Promise<unknown>
   cloudBackup?: () => Promise<CloudBackupView>
   setCloudBackup?: (settings: CloudBackupSettings) => Promise<CloudBackupView>
   runCloudBackup?: () => Promise<CloudBackupView>
@@ -156,7 +169,7 @@ export interface VaultSectionInjected {
   merge: (fromId: string, toId: string, keepSource?: boolean) => Promise<{ found: boolean }>
   restore: (id: string) => Promise<{ restored: boolean }>
   undeleteAll: () => Promise<{ restored: number }>
-  totp: (id: string) => Promise<{ code: string; label?: string; secondsRemaining: number }>
+  totp: (id: string) => Promise<{ code: string; label?: string; secondsRemaining: number; periodSeconds?: number }>
   sessionOpen: (url: string) => Promise<{ sessionId: string; url: string }>
   sessionCollect: (sessionId: string, url?: string) => Promise<{ cookies: unknown[]; count: number }>
   sessionClose: (sessionId: string) => Promise<{ closed: boolean }>
@@ -193,12 +206,14 @@ export type VaultSectionTypes = {
 /** Sanitized workbench projection. No entry secrets or editor drafts. */
 export interface VaultWorkbenchSnapshot {
   busy: boolean; locked: boolean; count: number; vaultName: string; accessMode: string; editorOpen: boolean
-  ready: boolean; message: string | null; backups: number; weak: number; reused: number; score: number | null
+  ready: boolean; loadState?: 'loading' | 'ready' | 'error'; message: string | null; backups: number; weak: number; reused: number; score: number | null
   activity: Array<{ action: string; title: string; at: number }>
 }
 export interface VaultWorkbenchCommand { id: number; kind: 'create' | 'search' | 'refresh' | 'lock' | 'switch'; value?: string }
 export interface VaultEmbeddedProps {
   embedded?: boolean
+  backupView?: 'cloud' | 'local'
+  onQuickImport?: () => void
   activeTab?: VaultTab
   onNavigate?: (tab: VaultTab) => void
   onStatusChange?: (snapshot: VaultWorkbenchSnapshot) => void
@@ -206,47 +221,21 @@ export interface VaultEmbeddedProps {
 }
 export type VaultSectionProps = VaultSectionInjected & VaultEmbeddedProps
 
-/** The editable form fields we render (subset of the full wire). */
-type FormFields = {
-  title?: string | undefined
-  kind?: string | undefined
-  username?: string | undefined
-  email?: string | undefined
-  phone?: string | undefined
-  password?: string | undefined
-  host?: string | undefined
-  port?: string | undefined
-  privateKey?: string | undefined
-  apiKey?: string | undefined
-  secret?: string | undefined
-  accessToken?: string | undefined
-  refreshToken?: string | undefined
-  otpSecret?: string | undefined
-  cardNumber?: string | undefined
-  cardExpiry?: string | undefined
-  cardCvv?: string | undefined
-  cardHolder?: string | undefined
-  url?: string | undefined
-  notes?: string | undefined
-  icon?: string | undefined
-  color?: string | undefined
-  expiresAt?: number | undefined
-  /** Comma-separated env names; split into `envKeys` when saving. */
-  envKeys?: string | undefined
-  rotationDays?: number | undefined
-  sensitivity?: string | undefined
-  favorite?: boolean | undefined
-}
-
-const FORM_FIELDS: Array<{ key: keyof FormFields; label: VaultLocaleKey }> = [
+/** Rendering labels for the shared schema whitelist. */
+const FORM_FIELDS: Array<{ key: CredentialField; label: VaultLocaleKey | EditorLocaleKey }> = [
   { key: 'title', label: 'fieldTitle' },
   { key: 'kind', label: 'fieldKind' },
   { key: 'username', label: 'fieldUsername' },
   { key: 'email', label: 'fieldEmail' },
   { key: 'phone', label: 'fieldPhone' },
   { key: 'password', label: 'fieldPassword' },
+  { key: 'sshAuth', label: 'editorSshAuth' },
   { key: 'host', label: 'fieldHost' },
+  { key: 'ip', label: 'editorIp' },
   { key: 'port', label: 'fieldPort' },
+  { key: 'privateKey', label: 'editorPrivateKey' },
+  { key: 'certificate', label: 'editorCertificate' },
+  { key: 'keyPassphrase', label: 'editorKeyPassphrase' },
   { key: 'apiKey', label: 'fieldApiKey' },
   { key: 'secret', label: 'fieldSecret' },
   { key: 'accessToken', label: 'fieldAccessToken' },
@@ -441,18 +430,19 @@ type EditorState =
   | { readonly status: 'editing'; readonly entry: VaultFullWire }
 
 function emptyForm(): FormFields {
-  return { title: '', kind: 'login', username: '', email: '', phone: '', password: '', host: '', port: '', icon: '', color: '' }
+  return emptyCredentialForm()
 }
 
 /** Human label for a built-in template name (`builtin:wifi` → Wi-Fi). */
-function templateLabel(name: string): string {
-  const labels: Record<string, string> = {
-    'builtin:login': 'Login', 'builtin:ssh': 'SSH', 'builtin:api-key': 'API key',
-    'builtin:oauth': 'OAuth', 'builtin:secret': 'Secret', 'builtin:card': 'Card',
-    'builtin:wifi': 'Wi-Fi', 'builtin:server': 'Server', 'builtin:database': 'Database',
-    'builtin:identity': 'Identity', 'builtin:bank': 'Bank account', 'builtin:custom': 'Custom',
+function templateLabel(name: string, text: (key: VaultLocaleKey | EditorLocaleKey) => string): string {
+  const labels: Record<string, EditorLocaleKey> = {
+    'builtin:totp': 'editorTemplateTotp', 'builtin:login': 'editorTemplateLogin', 'builtin:password': 'editorTemplatePassword',
+    'builtin:ssh': 'editorTemplateSsh', 'builtin:ssh-password': 'editorTemplateSsh', 'builtin:ssh-certificate': 'editorTemplateSshCertificate',
+    'builtin:api-key': 'editorTemplateApiKey', 'builtin:oauth': 'editorTemplateOauth', 'builtin:secret': 'editorTemplateSecret',
+    'builtin:card': 'editorTemplateCard', 'builtin:cookie': 'editorTemplateCookie', 'builtin:custom': 'editorTemplateCustom',
   }
-  return labels[name] ?? name
+  const aliases: Record<string, string> = { 'builtin:wifi': 'Wi-Fi', 'builtin:server': 'Server', 'builtin:database': 'Database', 'builtin:identity': 'Identity', 'builtin:bank': 'Bank account' }
+  return labels[name] ? text(labels[name]!) : aliases[name] ?? name
 }
 
 /** How long ago a past timestamp was, e.g. "3 分钟前". Empty for unusable
@@ -471,11 +461,21 @@ function relativeAge(ts: number, t: VaultTranslate, now = Date.now()): string {
 /** Render the Vault settings section. */
 export function VaultSection(props: VaultSectionProps): ReactNode {
   const { t, config, setAccessMode, setAutoCapture, setAutoLock, list, search, get, add, update, remove, purge, trash, rotation, health, duplicates, duplicateGroups, merge, history, stats, backupStatus, backup, recent, restore, undeleteAll, totp, status, switchVault, listVaults, touch, setFavorite, setToolProfile, attachments, detach, attach, downloadAttachment, verifyAll, breachCheck, generatePassword, strength, generateUsername, templates, saveTemplate, lock, totpUri, tags, renameTag, removeTag, generatorHistory, backups, deleteBackup, restoreBackup, importChrome, importFirefox, import1password, importManagerCsv, previewImportCsv, importEnpass, importBitwarden, import1pif, importKeePassXml, importKdbx, importBitwardenEncrypted, keychainImport, searchSystem, sessionOpen, sessionCollect, sessionClose, sessionListOpen, sessionListSaved, sessionSave, sessionExport, sessionGet, sessionPrune, passwordHistory, passwordRollback, vaultRename, vaultDelete, watchtower, export1pux, exportBitwarden, exportCsv, recoveryCode, verifyRecovery, recoveryStatus, unlock } = props
-  const { cloudBackup, setCloudBackup, runCloudBackup } = props
+  const { cloudSyncCall, cloudBackup, setCloudBackup, runCloudBackup } = props
   const sectionRef = useRef<HTMLElement | null>(null)
   const editorRef = useRef<HTMLDivElement | null>(null)
   const editorOpener = useRef<HTMLElement | null>(null)
   const dialogs = useWorkbenchDialogs(t, sectionRef)
+  const editorId = useId()
+  const errorSummaryRef = useRef<HTMLDivElement | null>(null)
+  const editorGeneration = useRef(0)
+  const transitionPending = useRef(false)
+  const pendingEditorRead = useRef<number | null>(null)
+  // Dictionary integration is parent-owned; fallback keeps older injected hosts usable.
+  const editorText = (key: VaultLocaleKey | EditorLocaleKey): string => {
+    const value = t(key as VaultLocaleKey)
+    return value && value !== key ? value : editorEn[key as EditorLocaleKey] ?? key
+  }
   const searchId = useId()
   const searchRef = useRef<HTMLInputElement | null>(null)
   const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent)
@@ -492,10 +492,12 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
   const [state, setState] = useState<ViewState>({ status: 'loading' })
   const [editor, setEditor] = useState<EditorState>({ status: 'closed' })
   const [form, setForm] = useState<FormFields>(emptyForm())
-  const [busy, setBusy] = useState(false)
+  const [vaultBusy, setBusy] = useState(false)
+  const [cloudBusy, setCloudBusy] = useState(false)
+  const busy = vaultBusy || cloudBusy
   const [message, setMessage] = useState<string | null>(null)
   const [copiedId, setCopiedId] = useState<string | null>(null)
-  const [totpMap, setTotpMap] = useState<Record<string, { code: string; until: number }>>({})
+  const [totpMap, setTotpMap] = useState<Record<string, { code: string; until: number; periodSeconds?: number }>>({})
   const [uriMap, setUriMap] = useState<Record<string, string>>({})
   const [tagList, setTagList] = useState<Array<{ name: string; count: number }>>([])
   const [tagManagerOpen, setTagManagerOpen] = useState(false)
@@ -555,6 +557,13 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
   const [tplList, setTplList] = useState<Array<{ name: string; kind: string; fields: Record<string, string> }>>([])
   /** Hints of the template applied to the open editor, shown as field hints. */
   const [tplHints, setTplHints] = useState<Record<string, string>>({})
+  const [selectedTemplate, setSelectedTemplate] = useState('')
+  const [activeTemplate, setActiveTemplate] = useState<CredentialTemplate | null>(null)
+  const [authCleared, setAuthCleared] = useState<CredentialField[]>([])
+  const [formErrors, setFormErrors] = useState<EditorErrors>({})
+  const [advancedOpen, setAdvancedOpen] = useState(false)
+  const schema = credentialSchema(form.kind ?? 'login', activeTemplate, inferSshAuth(form))
+  const extraFields = existingExtraFields(editor.status === 'editing' ? editor.entry : undefined, schema, authCleared)
   const [kindFilter, setKindFilter] = useState('')
   const [tagFilter, setTagFilter] = useState('')
   const [expandedId, setExpandedId] = useState<string | null>(null)
@@ -586,9 +595,10 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
   const [backupVisited, setBackupVisited] = useState(false)
   useEffect(() => { if (activeTab === 'backup') setBackupVisited(true) }, [activeTab])
   const setActiveTab = useCallback((tab: VaultTab): void => {
+    if (busy) return
     if (props.onNavigate) props.onNavigate(tab)
     else setLocalTab(tab)
-  }, [props.onNavigate])
+  }, [props.onNavigate, busy])
   const [policy, setPolicy] = useState<{ accessMode: 'readonly' | 'ask' | 'auto'; autoCapture: boolean; autoLockSeconds: number; toolProfile: 'basic' | 'standard' | 'full' | 'custom'; toolGroups: string[] } | null>(null)
   const [trashEntries, setTrashEntries] = useState<VaultSummaryWire[]>([])
   const [report, setReport] = useState<{ rotation: unknown[]; weak: unknown[]; reused: unknown[]; strength: { weak: number; fair: number; strong: number } | null; no2fa: unknown[]; httpSites: unknown[]; score: number; verdict: string } | null>(null)
@@ -623,11 +633,79 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
   const [dupList, setDupList] = useState<Array<Array<{ id: string; title: string }>>>([])
   const [locked, setLocked] = useState(false)
   const [cloudStatusReady, setCloudStatusReady] = useState(false)
+  const [cloudAccessReason, setCloudAccessReason] = useState<CloudAccessReason>('checking')
+  const cloudEpoch = useRef(0)
+  const cloudRequest = useRef(0)
+  const cloudMounted = useRef(true)
+  const cloudSwitching = useRef(false)
+  const cloudVault = useRef<string | null>(null)
   const [vaults, setVaults] = useState<Array<{ name: string; active: boolean; entries?: number }>>([])
   const [audit, setAudit] = useState<Array<{ id: string; title: string; issues: string[] }>>([])
   const [breach, setBreach] = useState<{ checked: number; pwned: Array<{ id: string; title: string; count: number }>; weak: Array<{ id: string; title: string }>; offline: boolean } | null>(null)
 
   const readonly = policy?.accessMode === 'readonly'
+  const editorScope = vaults.find(vault => vault.active)?.name ?? ''
+  const editorLive = useRef({ locked, open: false, canGenerate: false, scope: editorScope, get })
+  editorLive.current = { locked, open: editor.status !== 'closed', canGenerate: schema.fields.includes('password'), scope: editorScope, get }
+  // All lock observations revoke pending full-entry reads before React commits.
+  function observeLocked(value: boolean): void {
+    if (value && !editorLive.current.locked) cloudRequest.current += 1
+    editorLive.current.locked = value
+    setLocked(value)
+    if (value) closeEditor()
+  }
+  useEffect(() => {
+    closeEditor()
+    return () => { editorGeneration.current += 1 }
+  }, [get, editorScope])
+
+  /** Never authorize cloud work with status/policy from an unknown or stale vault. */
+  const refreshCloudAccess = useCallback(async (): Promise<void> => {
+    if (cloudSwitching.current) return
+    const epoch = cloudEpoch.current
+    const request = ++cloudRequest.current
+    const current = () => cloudMounted.current && !cloudSwitching.current && epoch === cloudEpoch.current && request === cloudRequest.current
+    setCloudAccessReason('checking')
+    try {
+      // Identity is authoritative. Never guess "the first/default" row in the browser.
+      const listed = await listVaults()
+      if (!current()) return
+      const active = listed.filter(vault => vault.active)
+      if (active.length !== 1) {
+        setCloudStatusReady(false); setPolicy(null)
+        setCloudAccessReason(active.length === 0 ? 'no-active-vault' : 'ambiguous-active-vault')
+        return
+      }
+      const name = active[0]!.name
+      if (cloudVault.current !== name) {
+        const hadVault = cloudVault.current !== null
+        cloudVault.current = name
+        setCloudStatusReady(false); setPolicy(null)
+        setCloudAccessReason(hadVault ? 'vault-changed' : 'checking')
+      }
+      setVaults(listed)
+      const [vaultStatus, accessPolicy] = await Promise.allSettled([
+        status().then(value => {
+          if (current() && value.locked) { observeLocked(true); setCloudStatusReady(false) }
+          return value
+        }),
+        config(),
+      ])
+      if (!current() || cloudVault.current !== name) return
+      if (vaultStatus.status === 'fulfilled') observeLocked(vaultStatus.value.locked)
+      setPolicy(accessPolicy.status === 'fulfilled' ? accessPolicy.value : null)
+      const ready = vaultStatus.status === 'fulfilled' && accessPolicy.status === 'fulfilled'
+      setCloudStatusReady(ready)
+      if (!ready) setCloudAccessReason(vaultStatus.status === 'rejected' ? 'status-error' : 'policy-error')
+    } catch {
+      if (current()) { setCloudStatusReady(false); setPolicy(null); setCloudAccessReason('roster-error') }
+    }
+  }, [listVaults, status, config])
+  useEffect(() => {
+    cloudMounted.current = true
+    void refreshCloudAccess()
+    return () => { cloudMounted.current = false; cloudEpoch.current += 1; cloudVault.current = null }
+  }, [refreshCloudAccess])
 
   /** Format a byte count for display (e.g. 1536 → "1.5 KB"). */
   function formatSize(bytes: number): string {
@@ -669,16 +747,17 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
     if (icon.length > 0) setForm(previous => ({ ...previous, icon }))
   }, [form.url, form.icon])
   useEffect(() => {
-    const pw = form.password ?? ''
-    if (pw.length === 0) { setPwStrength(null); return }
+    const pw = schema.fields.includes('password') ? form.password ?? '' : ''
+    let active = true
+    if (editor.status === 'closed' || !pw || !strength) { setPwStrength(null); return }
     const timer = window.setTimeout(() => {
       void strength(pw).then(
-        r => setPwStrength({ score: r.score, verdict: r.verdict, bits: r.bits }),
-        () => setPwStrength(null),
+        result => { if (active) setPwStrength({ score: result.score, verdict: result.verdict, bits: result.bits }) },
+        () => { if (active) setPwStrength(null) },
       )
     }, 250)
-    return () => window.clearTimeout(timer)
-  }, [form.password, strength])
+    return () => { active = false; window.clearTimeout(timer) }
+  }, [form.password, form.kind, form.sshAuth, selectedTemplate, editor.status, strength])
 
   // Ctrl/Cmd+K focuses the vault search box (1Password-style quick search);
   // Ctrl/Cmd+N opens the new-entry form; Esc closes the ⋯ menu, collapses an
@@ -717,66 +796,92 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
     return () => window.removeEventListener('keydown', onKey, true)
   }, [openMenuId, expandedId, importPreview, tagManagerOpen, props.embedded])
 
-  /** Apply a catalog template. The template only carries the KIND plus hint
-   * texts ("expiry epoch millis", "PEM private key"): the hints become
-   * placeholders, and the form is reset to empty. They used to be copied in as
-   * values, which filled new entries with descriptions — and an unparseable
-   * `expiresAt` hint crashed the whole settings slot with
-   * `RangeError: Invalid time value` until the page was reloaded. */
-  function applyTemplate(name: string): void {
-    const tpl = tplList.find(t => t.name === name)
-    if (!tpl) return
-    const next: Partial<FormFields> = {}
-    if (tpl.kind !== 'builtin:custom') next.kind = templateKind(tpl.kind.replace('builtin:', ''))
-    setTplHints(templateHints(tpl.fields))
-    setForm({ ...emptyForm(), ...next })
-  }
-
-  /** Change the entry kind. When CREATING a new entry, unrelated fields from
-   * the previous kind are cleared so the form does not carry stale values; when
-   * EDITING an existing entry the other fields are kept (they may be valid for
-   * the new kind too, and clearing would risk data loss). */
-  function changeKind(kind: string): void {
-    setForm(previous => {
-      if (editor.status === 'creating') {
-        return { ...emptyForm(), kind }
+  /** A schema change keeps common metadata but never carries hidden draft secrets. */
+  async function transitionSchema(kind: string, template: CredentialTemplate | null, selection: string, mode?: SshAuth): Promise<void> {
+    if (busy || transitionPending.current) return
+    transitionPending.current = true
+    const generation = editorGeneration.current
+    try {
+      const original = editor.status === 'editing' ? entryToForm(editor.entry) : undefined
+      const referenceMode = form.kind === 'ssh' ? inferSshAuth(form) : original?.kind === 'ssh' ? inferSshAuth(original) : 'password'
+      const nextMode = mode ?? referenceMode
+      const nextSchema = credentialSchema(kind, template, nextMode)
+      const authSwitch = nextSchema.kind === 'ssh' && (form.kind === 'ssh' || original?.kind === 'ssh') && nextMode !== referenceMode
+      const inactive = inactiveSshFields(nextMode)
+      const hasInactive = authSwitch && inactive.some(key => Boolean(form[key]) || (editor.status === 'editing' && Boolean(editor.entry[key as keyof VaultFullWire])))
+      if (hasInactive) {
+        if (!(await dialogs.confirm(editorText('editorAuthConfirm')))) return
+      } else if (droppedDraftSecrets(form, nextSchema, original).length > 0) {
+        if (!(await dialogs.confirm(editorText('editorDiscardSecrets')))) return
       }
-      return { ...previous, kind }
-    })
+      if (generation !== editorGeneration.current) return
+      let cleared = authCleared
+      if (authSwitch) {
+        cleared = [...new Set([...authCleared, ...inactive])]
+        setAuthCleared(cleared)
+      }
+      const base = original ? { ...original } : undefined
+      if (base) for (const key of cleared) delete base[key]
+      const next = restrictForm(form, nextSchema, base)
+      for (const key of cleared) {
+        // A previously removed credential cannot reappear after switching back.
+        // Keep only a currently active value that the user explicitly re-entered.
+        if (!nextSchema.fields.includes(key) || form[key] === undefined) delete next[key]
+      }
+      if (authSwitch) for (const key of inactive) delete next[key]
+      editorGeneration.current += 1 // invalidate generated secrets still in flight
+      setForm(next)
+      setSelectedTemplate(selection)
+      setActiveTemplate(template)
+      setTplHints(template ? templateHints(template.fields) : {})
+      setRevealed({}); setShowGenOpts(false); setPwStrength(null); setGenHistory([]); setFormErrors({})
+    } finally { transitionPending.current = false }
   }
-
-  /** Save the current form as a reusable template. */
+  async function applyTemplate(name: string): Promise<void> {
+    const template = tplList.find(item => item.name === name) ?? null
+    if (name && !template) return
+    const kind = template ? templateKind(template.kind) : form.kind ?? 'login'
+    await transitionSchema(kind, template, name, kind === 'ssh' && template ? templateSshAuth(template) : undefined)
+  }
+  function changeKind(kind: string): void { void transitionSchema(kind, null, '') }
+  function changeSshAuth(mode: SshAuth): void { void transitionSchema('ssh', null, '', mode) }
+  /** Persist only static known field names, never even nonsecret entry values. */
   async function saveAsTemplate(): Promise<void> {
+    const generation = editorGeneration.current
     const name = await dialogs.prompt(t('tplNamePrompt'))
-    if (!name) return
-    const fields: Record<string, string> = {}
-    for (const key of ['username', 'email', 'phone', 'host', 'port', 'url', 'notes', 'icon', 'color',
-      'cardNumber', 'cardExpiry', 'cardCvv', 'cardHolder']) {
-      const v = (form as Record<string, unknown>)[key]
-      if (typeof v === 'string' && v.length > 0) fields[key] = v
-    }
-    await saveTemplate(name.trim(), form.kind ?? 'login', fields)
-    await templates().then(setTplList).catch(() => {})
-    setMessage(`${t('tplSaved')} ${name.trim()}`)
+    if (!name?.trim() || generation !== editorGeneration.current) return
+    try {
+      await saveTemplate(name.trim(), schema.kind, safeTemplateFields(schema))
+      await templates().then(setTplList).catch(() => {})
+      setMessage(t('tplSaved'))
+    } catch { setMessage(t('error')) }
   }
 
   /** Switch the active vault and reload everything. */
   async function switchVaultTo(name: string): Promise<void> {
+    if (busy) return
+    closeEditor()
+    const epoch = ++cloudEpoch.current
+    cloudRequest.current += 1
+    cloudSwitching.current = true
+    cloudVault.current = null
     setCloudStatusReady(false)
     setBusy(true)
     setMessage(null)
     try {
       await switchVault(name)
-      await listVaults().then(setVaults)
+      if (epoch !== cloudEpoch.current) return
+      cloudSwitching.current = false
+      await refreshCloudAccess()
+      if (epoch !== cloudEpoch.current) return
       setQuery('')
       void backups(20).then(setBackupList).catch(() => {})
       void backupStatus().then(bk => setBackupInfo(bk)).catch(() => {})
       void refresh()
-      status().then(value => { setLocked(value.locked); setCloudStatusReady(true) }).catch(() => {})
     } catch (err) {
-      setMessage(errText(err))
+      if (epoch === cloudEpoch.current) setMessage(errText(err))
     } finally {
-      setBusy(false)
+      if (epoch === cloudEpoch.current) { cloudSwitching.current = false; setBusy(false) }
     }
   }
 
@@ -1190,10 +1295,12 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
 
   /** Lock the vault immediately from the UI. */
   async function lockNow(): Promise<void> {
+    if (busy) return
+    cloudRequest.current += 1
     setBusy(true)
     try {
       const r = await lock()
-      setLocked(r.locked)
+      observeLocked(r.locked)
       if (r.locked) {
         // The vault is locked: clear the visible list and health data so
         // stale secrets and stats are not left on screen.
@@ -1220,10 +1327,9 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
     setBusy(true)
     try {
       const r = await unlock()
-      setLocked(r.locked)
+      observeLocked(r.locked)
       if (!r.locked) {
         void refresh()
-        void status().then(value => setLocked(value.locked)).catch(() => {})
       }
     } catch (err) {
       setMessage(errText(err))
@@ -1522,16 +1628,6 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
   }
 
   useEffect(() => {
-    let current = true
-    void config().then(
-      value => { if (current) setPolicy(value) },
-      () => { /* policy is informational; ignore failures */ },
-    )
-    void status().then(
-      value => { if (current) { setLocked(value.locked); setCloudStatusReady(true) } },
-      () => { /* ignore */ },
-    )
-    void listVaults().then(setVaults).catch(() => {})
     void templates().then(setTplList).catch(() => {})
     void watchtower().then(list => {
       const map: Record<string, { score: number; verdict: string; flags: string[] }> = {}
@@ -1539,8 +1635,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
       setWatchMap(map)
     }).catch(() => {})
     refreshSessions()
-    return () => { current = false }
-  }, [config, status, listVaults, templates, refreshSessions])
+  }, [templates, refreshSessions])
 
   /** Re-fetch the dashboard metadata (rotation/health/stats/recent/tags/audit/
    * trash…) so badges, filters and counts stay current after writes. */
@@ -1582,14 +1677,16 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
   }, [stats, backupStatus, rotation, health, recent, duplicates, duplicateGroups, verifyAll, tags, generatorHistory, backups, watchtower])
 
   const refresh = useMemo(() => async () => {
+    const epoch = cloudEpoch.current
+    void refreshCloudAccess()
     setState({ status: 'loading' })
     try {
       const entries = query.trim().length === 0
         ? await list()
         : await search(query.trim())
+      if (epoch !== cloudEpoch.current) return
       setState({ status: 'ready', entries })
       setVisibleCount(50)
-      status().then(value => setLocked(value.locked)).catch(() => {})
       // Keep badges/filters/counts (due, health, stats, trash, …) in sync
       // after writes — previously they only updated on mount or focus.
       refreshMeta()
@@ -1599,16 +1696,17 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
       // status() itself fails (e.g. an older host), a lock-shaped error still
       // flips the locked flag so write actions stay disabled.
       const st = await status().catch(() => null)
+      if (epoch !== cloudEpoch.current) return
       const raw = err instanceof Error ? err.message : String(err ?? '')
       const lockError = (st !== null && st.locked) || /vault is locked/i.test(raw)
       if (lockError) {
-        setLocked(true)
+        observeLocked(true)
         setState({ status: 'ready', entries: [] })
       } else {
-        setState({ status: 'error', reason: errText(err) })
+        setState({ status: 'error', reason: t('wbLoadFailed') })
       }
     }
-  }, [list, search, query, refreshMeta])
+  }, [list, search, query, refreshMeta, refreshCloudAccess, status])
 
   useEffect(() => {
     let current = true
@@ -1635,7 +1733,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
         void totp(id).then(
           result => setTotpMap(previous => ({
             ...previous,
-            [id]: { code: result.code, until: Date.now() + result.secondsRemaining * 1000 },
+            [id]: { code: result.code, until: Date.now() + result.secondsRemaining * 1000, periodSeconds: result.periodSeconds ?? 30 },
           })),
           () => { /* keep the last code; next window retries */ },
         )
@@ -1659,7 +1757,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
       .slice(0, 25)
     for (const e of targets) {
       void totp(e.id).then(
-        result => setTotpMap(previous => ({ ...previous, [e.id]: { code: result.code, until: Date.now() + result.secondsRemaining * 1000 } })),
+        result => setTotpMap(previous => ({ ...previous, [e.id]: { code: result.code, until: Date.now() + result.secondsRemaining * 1000, periodSeconds: result.periodSeconds ?? 30 } })),
         () => { /* secret removed or vault locked; row simply shows no code */ },
       )
     }
@@ -1722,11 +1820,18 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
     setFieldRows(previous => previous.map((row, i) => (i === index ? { ...row, [which]: value } : row)))
   }
 
+  function resetEditorDraft(): void {
+    editorGeneration.current += 1
+    if (pendingEditorRead.current !== null) { pendingEditorRead.current = null; setBusy(false) }
+    setForm(emptyForm()); setTagsDraft(''); setFieldRows([])
+    setTplHints({}); setSelectedTemplate(''); setActiveTemplate(null); setAuthCleared([])
+    setRevealed({}); setShowGenOpts(false); setPwStrength(null); setGenHistory([])
+    setFormErrors({}); setAdvancedOpen(false)
+  }
+  function closeEditor(): void { resetEditorDraft(); setEditor({ status: 'closed' }) }
   function startCreate(): void {
-    setForm(emptyForm())
-    setTagsDraft('')
-    setFieldRows([])
-    setTplHints({})
+    if (busy || readonly || locked || editor.status !== 'closed') return
+    resetEditorDraft()
     setMessage(null)
     setEditor({ status: 'creating' })
   }
@@ -1742,72 +1847,50 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
 
   /** Open the editor for an existing entry (fetches full secrets). */
   async function startEdit(id: string): Promise<void> {
+    if (busy || editorLive.current.locked) return
+    resetEditorDraft()
+    const generation = editorGeneration.current
+    const scope = editorLive.current.scope
+    const sourceGet = get
+    pendingEditorRead.current = generation
     setBusy(true)
     setMessage(null)
     try {
       const result = await get(id)
+      if (generation !== editorGeneration.current || editorLive.current.locked || scope !== editorLive.current.scope || sourceGet !== editorLive.current.get) return
       if (!result.found || result.entry === undefined) {
         setMessage(t('entryNotFound'))
         return
       }
       const entry = result.entry
-      setForm({
-        title: entry.title ?? '',
-        kind: entry.kind ?? 'login',
-        username: entry.username ?? '',
-        email: entry.email ?? '',
-        phone: entry.phone ?? '',
-        password: entry.password ?? '',
-        host: entry.host ?? '',
-        port: entry.port ?? '',
-        privateKey: entry.privateKey ?? '',
-        apiKey: entry.apiKey ?? '',
-        secret: entry.secret ?? '',
-        accessToken: entry.accessToken ?? '',
-        refreshToken: entry.refreshToken ?? '',
-        otpSecret: entry.otpSecret ?? '',
-        url: entry.url ?? '',
-        notes: entry.notes ?? '',
-        icon: entry.icon ?? '',
-        color: entry.color ?? '',
-        expiresAt: entry.expiresAt,
-        envKeys: (entry.envKeys ?? (entry.envKey !== undefined ? [entry.envKey] : [])).join(', '),
-        rotationDays: entry.rotationDays,
-        sensitivity: entry.sensitivity,
-        favorite: entry.favorite ?? false,
-      })
+      resetEditorDraft()
+      const draft = entryToForm(entry)
+      setForm(restrictForm(draft, credentialSchema(draft.kind ?? 'login', null, inferSshAuth(draft))))
       setTagsDraft((entry.tags ?? []).join(', '))
-      setFieldRows(entry.fields !== undefined ? Object.entries(entry.fields).map(([k, v]) => ({ key: k, value: String(v) })) : [])
-      setTplHints({})
+      setFieldRows(entry.fields !== undefined ? Object.entries(entry.fields).map(([key, value]) => ({ key, value: typeof value === 'string' ? value : JSON.stringify(value) ?? '' })) : [])
       setEditor({ status: 'editing', entry })
-    } catch (err) {
-      setMessage(errText(err))
+    } catch {
+      if (generation === editorGeneration.current && !editorLive.current.locked) setMessage(t('error'))
     } finally {
-      setBusy(false)
+      if (pendingEditorRead.current === generation) { pendingEditorRead.current = null; setBusy(false) }
     }
   }
 
   /** Save the current form (create or update). */
   async function save(): Promise<void> {
     if (busy) return
-    if (!(form.title ?? '').trim()) {
-      setMessage(t('errTitleEmpty'))
-      return
-    }
-    // Port must be a number in 1–65535 when provided (inline validation).
-    if (form.port !== undefined && form.port !== '' && !/^\d{1,5}$/.test(form.port.trim())) {
-      setMessage(t('errInvalidPort'))
-      return
-    }
-    if (form.port !== undefined && form.port !== '' && Number(form.port) > 65535) {
-      setMessage(t('errInvalidPort'))
+    const errors = validateCredentialForm(form, schema, editor.status === 'editing' ? editor.entry : undefined, authCleared.length > 0)
+    setFormErrors(errors)
+    if (Object.keys(errors).length > 0) {
+      if (Object.keys(errors).some(key => (ADVANCED_FIELDS as readonly string[]).includes(key))) setAdvancedOpen(true)
+      queueMicrotask(() => errorSummaryRef.current?.focus())
       return
     }
     // Editing an existing entry and actually typing a new password: confirm
     // (Bitwarden-style). An empty form password (entry had none, or the user
     // cleared it) is not a change, so it never prompts.
     const entryPw = editor.status === 'editing' ? (editor.entry?.password ?? '') : ''
-    const typedPw = (form.password ?? '').trim()
+    const typedPw = form.password ?? ''
     if (editor.status === 'editing' && typedPw.length > 0 && typedPw !== entryPw) {
       if (!(await dialogs.confirm(t('pwChangeConfirm')))) return
     }
@@ -1815,43 +1898,20 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
     setMessage(null)
     try {
       const tags = tagsDraft.split(',').map(x => x.trim()).filter(x => x.length > 0)
-      const fields: Record<string, string> = {}
-      for (const row of fieldRows) {
+      const original = editor.status === 'editing' ? editor.entry : undefined
+      const fields = Object.fromEntries(fieldRows.filter(row => row.key.trim()).map(row => {
         const key = row.key.trim()
-        if (key.length === 0) continue
-        fields[key] = row.value
-      }
-      const patch: VaultPatch = {
-        title: (form.title ?? '').trim(),
-        ...(form.kind !== undefined ? { kind: form.kind } : {}),
-        ...(form.username !== undefined ? { username: form.username } : {}),
-        ...(form.email !== undefined ? { email: form.email } : {}),
-        ...(form.phone !== undefined ? { phone: form.phone } : {}),
-        ...(form.password !== undefined ? { password: form.password } : {}),
-        ...(form.host !== undefined ? { host: form.host } : {}),
-        ...(form.port !== undefined ? { port: form.port } : {}),
-        ...(form.privateKey !== undefined ? { privateKey: form.privateKey } : {}),
-        ...(form.apiKey !== undefined ? { apiKey: form.apiKey } : {}),
-        ...(form.secret !== undefined ? { secret: form.secret } : {}),
-        ...(form.accessToken !== undefined ? { accessToken: form.accessToken } : {}),
-        ...(form.refreshToken !== undefined ? { refreshToken: form.refreshToken } : {}),
-        ...(form.otpSecret !== undefined ? { otpSecret: form.otpSecret } : {}),
-        ...(form.url !== undefined ? { url: form.url } : {}),
-        ...(form.notes !== undefined ? { notes: form.notes } : {}),
-        ...(form.icon !== undefined ? { icon: form.icon } : {}),
-        ...(form.color !== undefined ? { color: form.color } : {}),
-        ...(form.expiresAt !== undefined ? { expiresAt: form.expiresAt } : {}),
-        ...(form.envKeys !== undefined
-          ? { envKeys: form.envKeys.split(',').map(x => x.trim()).filter(x => x.length > 0) }
-          : {}),
-        ...(form.rotationDays !== undefined ? { rotationDays: form.rotationDays } : {}),
-        ...(form.sensitivity !== undefined ? { sensitivity: form.sensitivity } : {}),
-        ...(form.favorite !== undefined ? { favorite: form.favorite } : {}),
-        // Always send tags: an empty array clears them, and the host store
-        // treats empty string values as "clear this field" too.
-        tags,
-        fields,
-      }
+        const stored = original?.fields?.[key]
+        const originalText = typeof stored === 'string' ? stored : JSON.stringify(stored) ?? ''
+        // Editing one row must not stringify untouched numbers/objects elsewhere.
+        return [key, original?.fields && Object.hasOwn(original.fields, key) && row.value === originalText ? stored : row.value]
+      }))
+      const oldRows = original?.fields ? Object.entries(original.fields).map(([key, value]) => ({ key, value: typeof value === 'string' ? value : JSON.stringify(value) ?? '' })) : []
+      const fieldsChanged = JSON.stringify(oldRows) !== JSON.stringify(fieldRows)
+      const patch = credentialPatch(form, {
+        schema, tags, original, cleared: authCleared,
+        ...(!original || fieldsChanged ? { fields } : {}),
+      })
       if (editor.status === 'creating') {
         await add(patch as VaultPatch & { title: string })
         setMessage(t('savedNew'))
@@ -1859,11 +1919,12 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
         await update(editor.entry.id, patch)
         setMessage(t('savedUpdated'))
       }
-      setEditor({ status: 'closed' })
+      closeEditor()
       await refresh()
       refreshHealth()
-    } catch (err) {
-      setMessage(errText(err))
+    } catch {
+      // Host failures can contain submitted data. Never echo credential values.
+      setMessage(t('error'))
     } finally {
       setBusy(false)
     }
@@ -2018,6 +2079,10 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
         ...(e.host !== undefined ? { host: e.host } : {}),
         ...(e.port !== undefined ? { port: e.port } : {}),
         ...(e.privateKey !== undefined ? { privateKey: e.privateKey } : {}),
+        ...(e.sshAuth !== undefined ? { sshAuth: e.sshAuth } : {}),
+        ...(e.ip !== undefined ? { ip: e.ip } : {}),
+        ...(e.certificate !== undefined ? { certificate: e.certificate } : {}),
+        ...(e.keyPassphrase !== undefined ? { keyPassphrase: e.keyPassphrase } : {}),
         ...(e.apiKey !== undefined ? { apiKey: e.apiKey } : {}),
         ...(e.secret !== undefined ? { secret: e.secret } : {}),
         ...(e.accessToken !== undefined ? { accessToken: e.accessToken } : {}),
@@ -2231,7 +2296,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
     setBusy(true)
     try {
       const result = await totp(id)
-      setTotpMap(previous => ({ ...previous, [id]: { code: result.code, until: Date.now() + result.secondsRemaining * 1000 } }))
+      setTotpMap(previous => ({ ...previous, [id]: { code: result.code, until: Date.now() + result.secondsRemaining * 1000, periodSeconds: result.periodSeconds ?? 30 } }))
       // Auto-copy the code (Bitwarden/1Password-style one-tap flow).
       void copyValue(id, result.code)
     } catch {
@@ -2366,7 +2431,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
     snapshotCallback.current?.({
       busy, locked, count: Number(vaultStats?.total ?? (state.status === 'ready' ? state.entries.length : 0)),
       vaultName: vaults.find(v => v.active)?.name ?? '', accessMode: policy?.accessMode ?? '',
-      editorOpen: editor.status !== 'closed', ready: state.status === 'ready', message,
+      editorOpen: editor.status !== 'closed', ready: state.status === 'ready', loadState: state.status, message,
       backups: backupInfo?.backups ?? 0, weak: report?.weak.length ?? 0,
       reused: report?.reused.length ?? 0, score: report?.score ?? null,
       activity: recentEvents.slice(0, 12).map(event => ({ action: String(event.action ?? ''), title: String(event.title ?? ''), at: Number(event.at ?? 0) })),
@@ -2379,7 +2444,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
     lastCommand.current = command.id
     if (command.kind === 'create' && !busy && !readonly && !locked) startCreate()
     if (command.kind === 'search') searchRef.current?.focus()
-    if (command.kind === 'refresh') void refresh()
+    if (command.kind === 'refresh') { if (!busy) void refresh(); else void refreshCloudAccess() }
     if (command.kind === 'lock' && !busy) void lockNow()
     if (command.kind === 'switch' && command.value && !busy && !locked) void switchVaultTo(command.value)
   }, [props.command])
@@ -2389,6 +2454,98 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
     editorRef.current?.focus()
     return () => { if (editorOpener.current?.isConnected) editorOpener.current.focus() }
   }, [editor.status, props.embedded])
+
+  function labelForField(key: CredentialField): string {
+    if (key === 'secret' && schema.kind === 'cookie') return editorText('editorCookieValue')
+    const field = FORM_FIELDS.find(field => field.key === key)
+    return field ? editorText(field.label) : key
+  }
+  function setFormValue(key: CredentialField, value: string | number | boolean | undefined): void {
+    setForm(previous => ({ ...previous, [key]: value }))
+    setFormErrors(previous => { const next = { ...previous }; delete next[key]; return next })
+  }
+  async function generateEditorPassword(): Promise<void> {
+    const generation = editorGeneration.current
+    try {
+      const result = await generatePassword(genOpts)
+      if (generation !== editorGeneration.current || editorLive.current.locked || !editorLive.current.open || !editorLive.current.canGenerate) return
+      setFormValue('password', result.password)
+      const history = await generatorHistory().catch(() => [])
+      if (generation === editorGeneration.current && !editorLive.current.locked && editorLive.current.open && editorLive.current.canGenerate) setGenHistory(history)
+    } catch { if (generation === editorGeneration.current) setMessage(t('error')) }
+  }
+  function renderEditorField(field: (typeof FORM_FIELDS)[number]): ReactNode {
+    const key = field.key
+    const label = labelForField(key)
+    const error = formErrors[key]
+    const hint = key === 'otpSecret' ? editorText('editorTotpHint') : key === 'privateKey' ? editorText('editorPrivateKeyHint') : tplHints[key] ?? (key === 'envKeys' ? t('fieldEnvKeyHint') : '')
+    const id = editorId + '-' + key
+    const attrs = { id, disabled: busy, 'aria-invalid': Boolean(error), 'aria-describedby': [error ? id + '-error' : '', hint ? id + '-hint' : ''].filter(Boolean).join(' ') || undefined }
+    const value = typeof form[key] === 'string' ? form[key] as string : ''
+    let control: ReactNode
+    if (key === 'kind') {
+      control = <select {...attrs} value={form.kind ?? 'login'} onChange={event => changeKind(event.target.value)}>
+        {Object.entries(KIND_KEYS).map(([value, key]) => <option key={value} value={value}>{t(key)}</option>)}
+      </select>
+    } else if (key === 'sshAuth') {
+      control = <select {...attrs} value={schema.sshAuth} onChange={event => changeSshAuth(event.target.value === 'certificate' ? 'certificate' : 'password')}>
+        <option value="password">{editorText('editorSshPassword')}</option>
+        <option value="certificate">{editorText('editorSshCertificate')}</option>
+      </select>
+    } else if (isSecretField(key)) {
+      const multiline = key === 'privateKey' || key === 'certificate' || (key === 'secret' && schema.kind === 'cookie')
+      control = <div className={css.secretField}>
+        {multiline ? <textarea {...attrs} rows={key === 'privateKey' ? 6 : 3} className={revealed[key] ? css.secretTextarea : css.maskedTextarea}
+          data-secret-masked={revealed[key] ? undefined : 'true'} spellCheck={false} autoComplete="off"
+          value={value} onChange={event => setFormValue(key, event.target.value)} />
+          : <input {...attrs} type={revealed[key] ? 'text' : 'password'} autoComplete="off" spellCheck={false}
+            inputMode={key === 'cardNumber' || key === 'cardCvv' ? 'numeric' : undefined} value={value}
+            onChange={event => setFormValue(key, key === 'cardNumber' ? event.target.value.replace(/\D/g, '').slice(0, 19) : key === 'cardCvv' ? event.target.value.replace(/\D/g, '').slice(0, 4) : event.target.value)} />}
+        <div className={css.secretActions}>
+          {key === 'password' && <>
+            <button type="button" className={css.revealButton} disabled={busy} title={t('genPwHint')} onClick={() => void generateEditorPassword()}>{t('genPw')}</button>
+            <button type="button" className={css.revealButton} disabled={busy} aria-label={t('genOptsHint')} aria-expanded={showGenOpts} onClick={() => setShowGenOpts(value => !value)}>{t('genOptsHint')}</button>
+          </>}
+          <button type="button" className={css.revealButton} disabled={busy} aria-label={(revealed[key] ? t('hide') : t('show')) + ' ' + label}
+            aria-pressed={Boolean(revealed[key])} onClick={() => setRevealed(previous => ({ ...previous, [key]: !previous[key] }))}>{revealed[key] ? t('hide') : t('show')}</button>
+        </div>
+      </div>
+    } else if (key === 'notes') {
+      control = <textarea {...attrs} rows={3} value={value} onChange={event => setFormValue(key, event.target.value)} />
+    } else if (key === 'expiresAt') {
+      control = <input {...attrs} type="datetime-local" value={localDateTimeValue(form.expiresAt)} onChange={event => {
+        const epoch = event.target.value ? Date.parse(event.target.value) : NaN
+        setFormValue(key, Number.isNaN(epoch) ? undefined : epoch)
+      }} />
+    } else if (key === 'rotationDays') {
+      control = <input {...attrs} type="number" min={0} max={3650} step={1} placeholder={t('rotationClearHint')} value={form.rotationDays ?? ''}
+        onChange={event => setFormValue(key, event.target.value ? Number(event.target.value) : undefined)} />
+    } else if (key === 'sensitivity') {
+      control = <select {...attrs} value={form.sensitivity ?? 'normal'} onChange={event => setFormValue(key, event.target.value)}>
+        <option value="normal">{t('sensitivityNormal')}</option><option value="high">{t('sensitivityHigh')}</option>
+      </select>
+    } else if (key === 'favorite') {
+      control = <div className={css.checkField}><input {...attrs} type="checkbox" checked={form.favorite ?? false} onChange={event => setFormValue(key, event.target.checked)} /><span>{t('favoriteHint')}</span></div>
+    } else if (key === 'icon') {
+      control = <div className={css.iconFieldWrap}><input {...attrs} type="text" value={value} maxLength={4} onChange={event => setFormValue(key, event.target.value)} />
+        <span className={css.emojiPicker} role="group" aria-label={t('iconPickerHint')}>{EMOJI_ICONS.map(icon => <button key={icon} type="button" className={css.emojiBtn} title={icon} onClick={() => setFormValue(key, icon)}>{icon}</button>)}</span>
+      </div>
+    } else if (key === 'color') {
+      control = <div className={css.colorFieldWrap}><input {...attrs} type="text" value={value} maxLength={7} placeholder="#2e9e5b" onChange={event => setFormValue(key, event.target.value)} />
+        <span className={css.colorPalette} role="group" aria-label={t('colorPickerHint')}>{COLOR_PRESETS.map(color => <button key={color} type="button" className={css.colorSwatch} style={{ background: color }} title={color} aria-label={color} onClick={() => setFormValue(key, color)} />)}</span>
+      </div>
+    } else {
+      control = <input {...attrs} type="text" value={value} autoComplete={key === 'envKeys' ? 'off' : undefined}
+        inputMode={key === 'port' ? 'numeric' : undefined} placeholder={key === 'cardExpiry' ? 'MM/YY' : undefined}
+        onChange={event => setFormValue(key, event.target.value)} />
+    }
+    return <div key={key} className={css.field + (key === 'privateKey' || key === 'notes' || key === 'certificate' ? ' ' + css.wideField : '')}>
+      <label htmlFor={id}>{label}{key === 'url' && siteGlyph(form.url, undefined) && <span className={css.urlGlyph} title={t('urlLogoHint')}>{t('urlLogoText')}</span>}</label>
+      {control}
+      {hint && <small id={id + '-hint'} className={css.fieldHint}>{hint}</small>}
+      {error && <small id={id + '-error'} className={css.fieldError}>{editorText(error)}</small>}
+    </div>
+  }
 
   return (
     <section ref={sectionRef} className={props.embedded ? `${css.section} ${css.embedded}` : css.section} aria-label={t('heading')} data-editor-open={editor.status !== 'closed' ? '' : undefined}>
@@ -2471,6 +2628,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
           <button type="button" className={css.addButton} onClick={startCreate} title={t('addShortcut')} disabled={busy || readonly || locked}>
             + {t('add')}
           </button>
+          {props.onQuickImport && <button type="button" className={css.dupMerge} onClick={props.onQuickImport} disabled={busy || readonly || locked}>{t('quickImportTitle')}</button>}
           {!readonly && !locked && (
             <button type="button" className={selectMode ? `${css.dupMerge} ${css.selectActive}` : css.dupMerge} onClick={toggleSelectMode} disabled={busy}>
               {selectMode ? t('bulkDone') : t('bulkSelect')}
@@ -2936,7 +3094,8 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
       </div>)}
 
       {(props.embedded || activeTab === 'backup') && (<div className={css.tabPane} hidden={activeTab !== 'backup'} data-vault-pane="backup">
-      {(activeTab === 'backup' || backupVisited) && cloudBackup && setCloudBackup && runCloudBackup && (
+      {props.backupView !== 'local' && (activeTab === 'backup' || backupVisited) && cloudSyncCall && (<CloudSyncPanel key={vaults.find(v => v.active)?.name ?? 'current'} t={t} cloudSyncCall={cloudSyncCall} readonly={readonly} locked={locked} unavailable={policy === null || !cloudStatusReady} unavailableReason={cloudAccessReason} busy={vaultBusy} onBusyChange={setCloudBusy} onRetry={refreshCloudAccess} vaultName={vaults.find(v => v.active)?.name ?? ''} />)}
+      {!cloudSyncCall && (activeTab === 'backup' || backupVisited) && cloudBackup && setCloudBackup && runCloudBackup && (
         <CloudBackupPanel
           key={vaults.find(v => v.active)?.name ?? 'current'}
           t={t}
@@ -2949,6 +3108,8 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
           vaultName={vaults.find(v => v.active)?.name ?? ''}
         />
       )}
+      {(props.backupView === 'local' || !cloudSyncCall) && <>
+      {props.backupView === 'local' && cloudSyncCall && cloudBackup && setCloudBackup && runCloudBackup && <details><summary>{t('wbLegacyCloud')}</summary><CloudBackupPanel t={t} cloudBackup={cloudBackup} setCloudBackup={setCloudBackup} runCloudBackup={runCloudBackup} readonly={readonly} locked={locked} unavailable={busy || policy === null || !cloudStatusReady} vaultName={vaults.find(v=>v.active)?.name ?? ''} /></details>}
       <div className={css.reportBox}>
         <p className={css.reportTitle}>{t('backupTitle')}</p>
         <p className={css.reportSub}>{t('backupHint')}</p>
@@ -2992,6 +3153,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
       {backupList.length === 0 && (
         <p className={css.empty}>{t('noBackups')}</p>
       )}
+      </>}
       </div>)}
 
       {(props.embedded || activeTab === 'sessions') && (<div className={css.tabPane} hidden={activeTab !== 'sessions'} data-vault-pane="sessions">
@@ -3517,7 +3679,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
           {state.entries.filter(entry => (kindFilter === '' || entry.kind === kindFilter) && (tagFilter === '' || (entry.tags ?? []).includes(tagFilter)) && (!favOnly || (entry as VaultSummaryWire & { favorite?: boolean }).favorite === true) && (!dueOnly || dueMap[entry.id] !== undefined) && (!issueOnly || (watchMap[entry.id] !== undefined && watchMap[entry.id]!.verdict !== 'good')) && (reportFilter === '' || reportIdSets[reportFilter] === undefined || reportIdSets[reportFilter].has(entry.id))).sort((a, b) => sortBy === 'alpha' ? a.title.localeCompare(b.title) : sortBy === 'recent' ? (b.updatedAt ?? 0) - (a.updatedAt ?? 0) : sortBy === 'created' ? (b.createdAt ?? 0) - (a.createdAt ?? 0) : ((a as VaultSummaryWire & { favorite?: boolean }).favorite === true ? 0 : 1) - ((b as VaultSummaryWire & { favorite?: boolean }).favorite === true ? 0 : 1) || (b.updatedAt ?? 0) - (a.updatedAt ?? 0) || a.title.localeCompare(b.title)).slice(0, visibleCount).map(entry => {
             const totpInfo = totpMap[entry.id]
             const remaining = totpInfo !== undefined && totpInfo.until > 0 ? Math.max(0, Math.ceil((totpInfo.until - nowTick) / 1000)) : undefined
-            const frac = remaining !== undefined ? remaining / 30 : 0
+            const frac = remaining !== undefined ? Math.min(1, remaining / (totpInfo?.periodSeconds ?? 30)) : 0
             const code = totpInfo?.code
             return (
               <li key={entry.id} data-entry-id={entry.id} className={`${css.row}${dueMap[entry.id] !== undefined ? ` ${dueMap[entry.id]!.due === 'expired' ? css.rowExpired : css.rowDue}` : ''}${selectedIds.has(entry.id) ? ` ${css.rowSelected}` : ''}`}>
@@ -4000,7 +4162,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
 
       </div>)}
 
-      {editor.status !== 'closed' && (
+      {editor.status !== 'closed' && !locked && (
         <div
           ref={editorRef}
           tabIndex={-1}
@@ -4017,7 +4179,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
           }}
         >
           {props.embedded && <header className={css.editorHead}>
-            <button type="button" onClick={() => setEditor({ status: 'closed' })} disabled={busy}>{t('cancel')}</button>
+            <button type="button" onClick={closeEditor} disabled={busy}>{t('cancel')}</button>
             <strong>{editor.status === 'creating' ? t('add') : t('edit')}</strong>
           </header>}
           <div className={css.editorBody}>
@@ -4025,226 +4187,32 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
               <label className={css.genOptRow}>
                 <span>{t('tplApply')}</span>
                 <select
-                  value=""
-                  onChange={event => { const v = event.target.value; if (v) applyTemplate(v) }}
+                  aria-label={t('tplApply')}
+                  value={selectedTemplate}
+                  disabled={busy}
+                  onChange={event => void applyTemplate(event.target.value)}
                 >
                   <option value="">—</option>
-                  {tplList.map(tpl => <option key={tpl.name} value={tpl.name}>{templateLabel(tpl.name)}</option>)}
+                  {tplList.map(tpl => <option key={tpl.name} value={tpl.name}>{templateLabel(tpl.name, editorText)}</option>)}
                 </select>
               </label>
+              <button type="button" className={css.retryButton} disabled={busy} onClick={() => void transitionSchema('custom', { name: 'builtin:totp', kind: 'totp', fields: {} }, 'builtin:totp')}>{editorText('editorTemplateTotp')}</button>
               {editor.status === 'editing' && (
                 <button type="button" className={css.retryButton} onClick={() => void saveAsTemplate()} disabled={busy}>{t('tplSave')}</button>
               )}
+              <small className={css.fieldHint}>{editorText('editorTemplateSafe')}</small>
             </div>
-            {FORM_FIELDS.filter(f => {
-              const kind = form.kind ?? 'login'
-              // Card-only fields show only for the card kind; everything else
-              // is hidden when a card is selected (keeps the form focused).
-              if (f.key === 'cardNumber' || f.key === 'cardExpiry' || f.key === 'cardCvv' || f.key === 'cardHolder') {
-                return kind === 'card'
-              }
-              return kind !== 'card' || f.key === 'title' || f.key === 'kind' || f.key === 'notes' || f.key === 'icon' || f.key === 'color'
-            }).map(field => (
-              <label
-                key={field.key}
-                className={css.field}
-                // Hints of the applied template describe the field's content
-                // ("expiry epoch millis"); they belong in a tooltip, never in
-                // the value.
-                title={tplHints[field.key] ?? (field.key === 'envKeys' ? t('fieldEnvKeyHint') : undefined)}
-              >
-                <span>
-                  {t(field.label)}
-                  {field.key === 'url' && (() => {
-                    const g = siteGlyph(form.url, undefined)
-                    if (g === undefined) return null
-                    return (
-                      <span className={css.urlGlyph} title={t('urlLogoHint')}>
-                        <svg className={css.brandGlyphSm} viewBox="0 0 24 24" aria-hidden="true"><path d={g.p} fill={g.c} /></svg>
-                        {t('urlLogoText')}
-                      </span>
-                    )
-                  })()}
-                </span>
-                {field.key === 'kind' ? (
-                  <select
-                    value={form.kind ?? 'login'}
-                    onChange={event => changeKind(event.target.value)}
-                  >
-                    {Object.entries(KIND_KEYS).map(([value, key]) => (
-                      <option key={value} value={value}>{kindIcon(value)} {t(key)}</option>
-                    ))}
-                  </select>
-                ) : field.key === 'title' ? (
-                  <input
-                    autoFocus
-                    value={form.title ?? ''}
-                    onChange={event => setForm(previous => ({ ...previous, title: event.target.value }))}
-                  />
-                ) : field.key === 'password' || field.key === 'otpSecret' || field.key === 'apiKey'
-                  || field.key === 'secret' || field.key === 'accessToken' || field.key === 'refreshToken'
-                  || field.key === 'privateKey' ? (
-                  <span className={css.secretField}>
-                    <input
-                      type={revealed[field.key] ? 'text' : 'password'}
-                      value={(form[field.key] as string | undefined) ?? ''}
-                      onChange={event => setForm(previous => ({ ...previous, [field.key]: event.target.value }))}
-                    />
-                    {field.key === 'password' && (
-                      <>
-                        <button
-                          type="button"
-                          className={css.revealButton}
-                          title={t('genPwHint')}
-                          onClick={() => { void generatePassword(genOpts).then(r => { setForm(previous => ({ ...previous, password: r.password })); void generatorHistory().then(setGenHistory).catch(() => {}) }) }}
-                        >{t('genPw')}</button>
-                        <button
-                          type="button"
-                          className={css.revealButton}
-                          title={t('genOptsHint')}
-                          onClick={() => setShowGenOpts(v => !v)}
-                        >⚙</button>
-                      </>
-                    )}
-                    <button
-                      type="button"
-                      className={css.revealButton}
-                      onClick={() => setRevealed(previous => ({ ...previous, [field.key]: !previous[field.key] }))}
-                    >{revealed[field.key] ? t('hide') : t('show')}</button>
-                  </span>
-                ) : field.key === 'expiresAt' ? (
-                  <input
-                    type="datetime-local"
-                    value={localDateTimeValue(form.expiresAt)}
-                    onChange={event => {
-                      const raw = event.target.value
-                      const epoch = raw.length > 0 ? Date.parse(raw) : NaN
-                      setForm(previous => ({ ...previous, expiresAt: Number.isNaN(epoch) ? undefined : epoch }))
-                    }}
-                  />
-                ) : field.key === 'envKeys' ? (
-                  <input
-                    type="text"
-                    spellCheck={false}
-                    autoComplete="off"
-                    placeholder="DASHSCOPE_API_KEY"
-                    value={form.envKeys ?? ''}
-                    onChange={event => setForm(previous => ({ ...previous, envKeys: event.target.value.replace(/[^A-Za-z0-9_, ]/g, '') }))}
-                  />
-                ) : field.key === 'rotationDays' ? (
-                  <input
-                    type="number"
-                    min={0}
-                    max={3650}
-                    placeholder={t('rotationClearHint')}
-                    value={form.rotationDays ?? ''}
-                    onChange={event => {
-                      const raw = event.target.value
-                      setForm(previous => ({ ...previous, rotationDays: raw.length > 0 ? Number(raw) : undefined }))
-                    }}
-                  />
-                ) : field.key === 'sensitivity' ? (
-                  <select
-                    value={form.sensitivity ?? 'normal'}
-                    onChange={event => setForm(previous => ({ ...previous, sensitivity: event.target.value === 'high' ? 'high' : 'normal' }))}
-                  >
-                    <option value="normal">{t('sensitivityNormal')}</option>
-                    <option value="high">{t('sensitivityHigh')}</option>
-                  </select>
-                ) : field.key === 'favorite' ? (
-                  <label className={css.checkField}>
-                    <input
-                      type="checkbox"
-                      checked={form.favorite ?? false}
-                      onChange={event => setForm(previous => ({ ...previous, favorite: event.target.checked }))}
-                    />
-                    {t('favoriteHint')}
-                  </label>
-                ) : field.key === 'cardNumber' ? (
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    placeholder="4111 1111 1111 1111"
-                    value={(form.cardNumber ?? '').replace(/(.{4})/g, '$1 ').trim()}
-                    onChange={event => {
-                      const digits = event.target.value.replace(/\D/g, '').slice(0, 19)
-                      setForm(previous => ({ ...previous, cardNumber: digits }))
-                    }}
-                  />
-                ) : field.key === 'cardExpiry' ? (
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    placeholder="MM/YY"
-                    maxLength={5}
-                    value={form.cardExpiry ?? ''}
-                    onChange={event => {
-                      let raw = event.target.value.replace(/\D/g, '').slice(0, 4)
-                      if (raw.length >= 3) raw = raw.slice(0, 2) + '/' + raw.slice(2)
-                      setForm(previous => ({ ...previous, cardExpiry: raw }))
-                    }}
-                  />
-                ) : field.key === 'cardCvv' ? (
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    placeholder="123"
-                    maxLength={4}
-                    value={form.cardCvv ?? ''}
-                    onChange={event => setForm(previous => ({ ...previous, cardCvv: event.target.value.replace(/\D/g, '').slice(0, 4) }))}
-                  />
-                ) : field.key === 'cardHolder' ? (
-                  <input
-                    type="text"
-                    value={form.cardHolder ?? ''}
-                    onChange={event => setForm(previous => ({ ...previous, cardHolder: event.target.value }))}
-                  />
-                ) : field.key === 'icon' ? (
-                  <span className={css.iconFieldWrap}>
-                    <input
-                      type="text"
-                      value={(form.icon as string | undefined) ?? ''}
-                      placeholder="🔑"
-                      maxLength={4}
-                      onChange={event => setForm(previous => ({ ...previous, icon: event.target.value }))}
-                    />
-                    <span className={css.emojiPicker} role="group" aria-label={t('iconPickerHint')}>
-                      {EMOJI_ICONS.map(e => (
-                        <button key={e} type="button" className={css.emojiBtn} title={e} onClick={() => setForm(previous => ({ ...previous, icon: e }))}>{e}</button>
-                      ))}
-                    </span>
-                  </span>
-                ) : field.key === 'color' ? (
-                  <span className={css.colorFieldWrap}>
-                    <input
-                      type="text"
-                      value={(form.color as string | undefined) ?? ''}
-                      placeholder="#2e9e5b"
-                      maxLength={7}
-                      onChange={event => setForm(previous => ({ ...previous, color: event.target.value }))}
-                    />
-                    <span className={css.colorPalette} role="group" aria-label={t('colorPickerHint')}>
-                      {COLOR_PRESETS.map(c => (
-                        <button key={c} type="button" className={css.colorSwatch} style={{ background: c }} title={c} aria-label={c} onClick={() => setForm(previous => ({ ...previous, color: c }))} />
-                      ))}
-                    </span>
-                  </span>
-                ) : field.key === 'username' ? (
-                  <input
-                    type="text"
-                    value={(form[field.key] as string | undefined) ?? ''}
-                    onChange={event => setForm(previous => ({ ...previous, [field.key]: event.target.value }))}
-                  />
-                ) : (
-                  <input
-                    type="text"
-                    value={(form[field.key] as string | undefined) ?? ''}
-                    onChange={event => setForm(previous => ({ ...previous, [field.key]: event.target.value }))}
-                  />
-                )}
-              </label>
-            ))}
-            {pwStrength !== null && (
+            {Object.keys(formErrors).length > 0 && <div ref={errorSummaryRef} className={css.editorErrors} role="alert" tabIndex={-1} aria-labelledby={editorId + '-errors'}>
+              <strong id={editorId + '-errors'}>{editorText('editorValidationSummary')}</strong>
+              <ul>{Object.entries(formErrors).map(([key, error]) => <li key={key}><a href={'#' + editorId + '-' + key} onClick={event => { event.preventDefault(); document.getElementById(editorId + '-' + key)?.focus() }}>{labelForField(key as CredentialField)}: {editorText(error)}</a></li>)}</ul>
+            </div>}
+            {FORM_FIELDS.filter(field => field.key !== 'otpSecret' && schema.fields.includes(field.key) && !(ADVANCED_FIELDS as readonly CredentialField[]).includes(field.key)).map(renderEditorField)}
+            {extraFields.length > 0 && <aside className={css.editorExtras} role="note">
+              <strong>{editorText('editorExtras')}</strong>
+              <p>{editorText('editorExtrasHint')}</p>
+              <span>{extraFields.map(key => labelForField(key as CredentialField)).join(', ')}</span>
+            </aside>}
+            {schema.fields.includes('password') && pwStrength !== null && (
               <div className={css.pwMeter}>
                 <div className={`${css.pwBar} ${pwStrength.score >= 60 ? css.pwStrong : pwStrength.score >= 40 ? css.pwFair : css.pwWeak}`} style={{ width: `${pwStrength.score}%` }} />
                 <span className={css.pwLabel}>{t('strengthLabel')}: {pwStrength.score}/100 ({t(VERDICT_KEYS_SHORT[pwStrength.verdict] ?? 'verdictGood')}) · {t('entropyLabel')}: {pwStrength.bits} bits</span>
@@ -4252,7 +4220,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
             )}
             {(() => {
               const pw = (form.password ?? '').trim()
-              if (pw.length === 0) return null
+              if (!schema.fields.includes('password') || pw.length === 0) return null
               const risk = judgePasswordRisk(
                 pw,
                 pwStrength !== null ? pwStrength.score : null,
@@ -4266,7 +4234,7 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
                 </p>
               )
             })()}
-            {showGenOpts && (
+            {schema.fields.includes('password') && showGenOpts && (
               <div className={css.genOpts}>
                 <label className={css.genOptRow}>
                   <span>{t('genPassphrase')}</span>
@@ -4373,40 +4341,33 @@ export function VaultSection(props: VaultSectionProps): ReactNode {
                 ))}
               </datalist>
             </label>
-            <label className={css.field}>
-              <span>{t('fieldCustom')}</span>
-              <div className={css.customFieldRows}>
-                {fieldRows.map((row, i) => (
-                  <span key={i} className={css.customFieldRow}>
-                    <input
-                      type="text"
-                      className={css.customKeyInput}
-                      placeholder={t('customKeyPh')}
-                      value={row.key}
-                      onChange={event => updateFieldRow(i, 'key', event.target.value)}
-                    />
-                    <span className={css.customEq}>=</span>
-                    <input
-                      type="text"
-                      className={css.customValueInput}
-                      placeholder={t('customValuePh')}
-                      value={row.value}
-                      onChange={event => updateFieldRow(i, 'value', event.target.value)}
-                    />
-                    <button
-                      type="button"
-                      className={css.revealButton}
-                      title={t('customRemove')}
-                      onClick={() => removeFieldRow(i)}
-                    >✕</button>
-                  </span>
-                ))}
+            <section className={css.wideField} aria-label={editorText('editorTwoFactor')}>
+              <strong>{editorText('editorTwoFactor')}</strong>
+              <p className={css.fieldHint}>{editorText('editorTotpDescription')}</p>
+              {renderEditorField(FORM_FIELDS.find(field => field.key === 'otpSecret')!)}
+            </section>
+            <details className={css.editorAdvanced} open={advancedOpen} onToggle={event => setAdvancedOpen(event.currentTarget.open)}>
+              <summary>{editorText('editorAdvanced')}</summary>
+              <div className={css.advancedFields}>
+                {FORM_FIELDS.filter(field => schema.fields.includes(field.key) && (ADVANCED_FIELDS as readonly CredentialField[]).includes(field.key)).map(renderEditorField)}
+                <div className={css.field + ' ' + css.wideField} role="group" aria-label={t('fieldCustom')}>
+                  <span>{t('fieldCustom')}</span>
+                  <div className={css.customFieldRows}>
+                    {fieldRows.map((row, index) => <div key={index} className={css.customFieldRow}>
+                      <input type="text" className={css.customKeyInput} aria-label={editorText('editorFieldName') + ' ' + (index + 1)} placeholder={t('customKeyPh')} value={row.key} onChange={event => updateFieldRow(index, 'key', event.target.value)} />
+                      <span className={css.customEq} aria-hidden="true">=</span>
+                      <input type={revealed['custom-' + index] ? 'text' : 'password'} className={css.customValueInput} autoComplete="off" spellCheck={false} aria-label={editorText('editorFieldValue') + ' ' + (index + 1)} value={row.value} onChange={event => updateFieldRow(index, 'value', event.target.value)} />
+                      <button type="button" className={css.revealButton} aria-label={(revealed['custom-' + index] ? t('hide') : t('show')) + ' ' + editorText('editorFieldValue') + ' ' + (index + 1)} onClick={() => setRevealed(previous => ({ ...previous, ['custom-' + index]: !previous['custom-' + index] }))}>{revealed['custom-' + index] ? t('hide') : t('show')}</button>
+                      <button type="button" className={css.revealButton} aria-label={t('customRemove') + ' ' + (index + 1)} onClick={() => removeFieldRow(index)}>×</button>
+                    </div>)}
+                  </div>
+                  <button type="button" className={css.dupMerge} onClick={addFieldRow}>{t('addField')}</button>
+                </div>
               </div>
-              <button type="button" className={css.dupMerge} onClick={addFieldRow}>{t('addField')}</button>
-            </label>
+            </details>
           </div>
           <div className={css.editorActions}>
-            <button type="button" onClick={() => setEditor({ status: 'closed' })} disabled={busy}>{t('cancel')}</button>
+            <button type="button" onClick={closeEditor} disabled={busy}>{t('cancel')}</button>
             <button type="button" className={css.saveButton} title={t('saveShortcut')} onClick={() => void save()} disabled={busy}>{t('save')}</button>
           </div>
         </div>

@@ -31,7 +31,11 @@ SOFTWARE.
 Adaptation scope: embedded settings.section workbench registration, four-tab
 navigation and measured overflow, full-width origin-scoped task surfaces,
 command palette and keyboard behavior, native DSH token geometry, scoped
-modal/focus lifecycle, and status presentation. Configuration-manager backup,
-migration, marketplace, profile and sync operations are not imported or run.
+modal/focus lifecycle, and status presentation. The cloud sync render components, original CSS, pure retention selector and
+channel protocol patterns are additionally adopted in 1.12.0. They operate only
+on encrypted password-vault data through a separate host controller; DSH
+configuration migration, marketplace and profile operations are not imported
+or run. Source-copy provenance is in vendor/config-manager/source-manifest.json.
+Transport license: src/cloud-sync/transports/LICENSE.reference.
 The retained application is a password/credential vault, not a configuration
 manager. No configuration or secrets from the reference installation ship.

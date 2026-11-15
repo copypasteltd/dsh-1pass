@@ -1,0 +1,21 @@
+// @vitest-environment jsdom
+import {afterEach,beforeEach,expect,test,vi} from 'vitest'
+import {createElement} from 'react'
+import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react'
+import {VaultSection} from '../src/client/VaultSection.tsx'
+import {workbenchFixture} from './fixtures/workbench-ui.ts'
+import {en} from '../src/client/locales.ts'
+import {cloudAccessMessage,type CloudAccessReason} from '../src/client/vault-access.ts'
+import {vaultTranslations} from '../vendor/config-manager/src/client/vault-translations.ts'
+const tr=vaultTranslations(()=> 'en')
+afterEach(()=>{cleanup();sessionStorage.clear();localStorage.clear();vi.restoreAllMocks()})
+beforeEach(()=>{window.matchMedia=vi.fn().mockImplementation(()=>({matches:true,addEventListener(){},removeEventListener(){},addListener(){},removeListener(){},dispatchEvent(){return true}}))})
+function mount(){const {props,api}=workbenchFixture();const cloud=vi.fn(async(action:string)=>action==='status'?{ok:true,configured:false,credentialConfigured:false,credentialWritable:true,sectionCount:1,syncSections:[{id:'vault',displayName:'Password vault',portability:'portable',defaultIncluded:true}]}:action==='history'?{entries:[]}:action==='githubValidate'?{ok:true,valid:false}:{ok:true});return {props,api,cloud,render:()=>render(createElement(VaultSection,{...props,cloudSyncCall:cloud,embedded:true,activeTab:'backup'}))}}
+function pending<T>(){let resolve!:(value:T)=>void;const promise=new Promise<T>(done=>{resolve=done});return{promise,resolve}}
+test('initial cloud access is checking, not an unavailable error, and waits for an authoritative current vault',async()=>{const f=mount(),p=pending<Awaited<ReturnType<typeof f.api.listVaults>>>();f.api.listVaults.mockReturnValue(p.promise);f.render();expect(screen.getByText(cloudAccessMessage('checking',false))).toBeTruthy();expect(screen.queryByRole('alert')).toBeNull();expect(f.cloud).not.toHaveBeenCalled();p.resolve([{name:'default',active:true,entries:1}]);await screen.findByText(tr.syncT('history.empty'))})
+test.each([
+ ['no-active-vault',()=>[{name:'default',active:false,entries:1}]],
+ ['ambiguous-active-vault',()=>[{name:'default',active:true,entries:1},{name:'other',active:true,entries:1}]],
+] as const)('%s never guesses the first row or connects to cloud',async(reason,roster)=>{const f=mount();f.api.listVaults.mockResolvedValue(roster());f.render();await screen.findByText(cloudAccessMessage(reason,false));expect(f.cloud).not.toHaveBeenCalled();expect(f.api.config).not.toHaveBeenCalled();expect(f.api.status).not.toHaveBeenCalled()})
+test.each(['roster-error','status-error','policy-error'] as const)('%s shows the exact failed local stage and Retry can recover',async reason=>{const f=mount();if(reason==='roster-error')f.api.listVaults.mockRejectedValue(new Error('SYNTHETIC-DO-NOT-RENDER'));if(reason==='status-error')f.api.status.mockRejectedValue(new Error('SYNTHETIC-DO-NOT-RENDER'));if(reason==='policy-error')f.api.config.mockRejectedValue(new Error('SYNTHETIC-DO-NOT-RENDER'));f.render();await screen.findByText(cloudAccessMessage(reason,false));expect(document.body.textContent).not.toContain('SYNTHETIC-DO-NOT-RENDER');expect(f.cloud).not.toHaveBeenCalled();f.api.listVaults.mockResolvedValue([{name:'default',active:true,entries:1}]);f.api.status.mockResolvedValue({locked:false,entries:1});f.api.config.mockResolvedValue({accessMode:'auto',autoCapture:false,autoLockSeconds:0,toolProfile:'basic',toolGroups:['core']});fireEvent.click(screen.getByRole('button',{name:'Retry'}));await screen.findByText(tr.syncT('history.empty'));expect(f.cloud.mock.calls.some(([action])=>action==='status')).toBe(true)})
+test('lock observation clears cloud draft immediately even if the access-policy request is pending',async()=>{const f=mount(),p=pending<Awaited<ReturnType<typeof f.api.config>>>();f.api.status.mockResolvedValue({locked:true,entries:0});f.api.config.mockReturnValue(p.promise);f.render();await screen.findByText('Unlock the password vault to use cloud sync.');expect(screen.queryByText(cloudAccessMessage('checking',false))).toBeNull();expect(f.cloud).not.toHaveBeenCalled();p.resolve({accessMode:'auto',autoCapture:false,autoLockSeconds:0,toolProfile:'basic',toolGroups:['core']})})

@@ -1,9 +1,9 @@
 /** Navigation model adapted from dsh-config-manager (MIT), src/ui/nav-model.ts. */
 export type VaultTab = 'entries' | 'security' | 'transfer' | 'backup' | 'permissions' | 'sessions' | 'audit' | 'trash'
 export type MainPage = 'home' | 'entries' | 'backup' | 'permissions'
-export type TaskPage = Exclude<VaultTab, 'entries' | 'backup' | 'permissions'> | 'about' | 'activity'
+export type TaskPage = Exclude<VaultTab, 'entries' | 'backup' | 'permissions'> | 'about' | 'activity' | 'quick-import' | 'local-backups'
 export const MAIN_PAGES: readonly MainPage[] = ['home', 'entries', 'backup', 'permissions']
-export const TASK_PAGES: readonly TaskPage[] = ['security', 'transfer', 'sessions', 'audit', 'trash', 'about']
+export const TASK_PAGES: readonly TaskPage[] = ['security', 'transfer', 'sessions', 'audit', 'trash', 'about', 'quick-import', 'local-backups']
 export interface WorkbenchNavigation { page: MainPage; task: { kind: TaskPage; origin: MainPage } | null }
 export const INITIAL_NAVIGATION: WorkbenchNavigation = { page: 'home', task: null }
 /** Only navigation is persisted. No entry, draft, password, query or dialog enters storage. */

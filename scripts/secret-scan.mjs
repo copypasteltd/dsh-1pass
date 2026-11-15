@@ -101,6 +101,10 @@ export async function scanDirectory(root, options = {}) {
       const full = join(dir, entry.name)
       if (entry.isDirectory()) {
         if (SKIP_DIRS.has(entry.name)) continue
+        // Rebuildable paired-reference QA bundles are not release artifacts; original
+        // upstream comments contain deliberate scanner examples. Production lib and
+        // all vendored/source files remain scanned.
+        if (relative(root, full).replace(/\\/g, '/') === 'lib/cloud-sync-visual') continue
         if (entry.name === 'lib' && options.includeLib !== true) continue
         await walk(full)
         continue
