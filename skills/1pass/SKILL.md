@@ -1,87 +1,82 @@
 ---
 name: "1pass"
-description: "Use /1pass to find existing local dsh-vault credentials by title, host or ID and read only task-required login, SSH, API or TOTP fields. 默认只报告非秘密摘要；为明确授权的任务安全取用凭据，不回显密码、不自动连接、不导出整库。"
+description: "通过 /1pass 按名称、主机或 ID 获取本机 dsh-vault 保存的账号、密码、SSH、API Key 和 TOTP 信息，并用于用户指定的登录、连接或接口调用。Look up and use local credentials with the available DSH tools."
 ---
 
-# /1pass — 本地凭据取用 / Local credential use
+# /1pass — 本地密码库取用
 
-Retrieve existing local password-vault information for the current task. This skill is not a credential store, an SSH client, or permission to run unrelated operations.
+根据用户指定的名称或用途，从本机 dsh-vault 获取条目；用户要求连接、登录或调用接口时，将获取的字段提供给对应工具完成操作。
 
-## 快速指定 / Invocation
+## 常见用法
 
-- `/1pass demo-server`: find and report a non-secret summary only; do not fetch its password or connect.
-- `/1pass demo-server 只要主机、用户名和端口`: read only those non-secret fields.
-- `/1pass 使用 demo-server 连接并检查系统版本，不改配置`: retrieve only the authentication needed for that authorized connection, then verify its result.
-- `/1pass 使用 demo-api 调用我指定的接口，不显示 key`: use its key for that request without echoing it.
-- `/1pass demo-account 的一次性验证码`: generate a current code; do not read the long-lived TOTP seed.
+- `/1pass demo-server`：查找这条记录，按用户问题提供信息。
+- `/1pass demo-server 的密码`：获取该条目的 password 字段。
+- `/1pass demo-server 的主机、用户名、端口`：获取这些连接参数。
+- `/1pass 用 demo-server 连接服务器并查看系统版本`：获取连接和认证字段，调用 SSH／远程执行工具。
+- `/1pass 用 demo-api 调用指定接口`：获取 API 字段并交给请求工具。
+- `/1pass demo-account 验证码`：生成该条目的当前 TOTP 验证码。
 
-A bare name is a summary request, not a login. Skill selection grants no extra execution or external-write authority.
+## 查找与读取
 
-## 1. 找到正确条目 / Resolve the correct entry
-
-1. Call `vault_search({query:"demo-server",limit:10})`. Without a query, ask for a name or purpose instead of enumerating the whole vault.
-2. Inspect returned `id/title/kind/host/port/username/sshAuth` summaries. Prefer an exact title or ID. Search may return multiple fuzzy matches; never silently pick the first.
-3. For ambiguous results, show only the candidate titles/types and necessary non-secret distinctions, then ask the user to choose. Do not read secrets to guess. If absent, report not found; do not invent or automatically save a credential.
-4. Bind subsequent reads to the confirmed ID. If the vault locks, changes, or the task target changes, re-confirm before using a previously read secret.
-
-Use search then confirmed-ID get for this skill. Do not fall back to `vault_fill`: it cannot bind the confirmed ID and does not share every ID-scoped high-sensitivity read approval path. If search/get is unavailable or approval cannot be obtained, stop and explain the missing safe capability.
-
-## 2. 最少字段读取 / Minimum field access
-
-For ordinary queries, summaries are enough. When missing non-secret fields are needed, call `vault_get` with an explicit list:
+1. 用 `vault_search` 查找名称、主机、用户名或标签：
 
 ~~~json
-{"id":"<ID returned by search>","fields":["title","kind","host","port","username","sshAuth"]}
+{"query":"demo-server","limit":10}
 ~~~
 
-Only read secrets just before the confirmed consumer needs them. Never omit `fields` merely for convenience. Older plugin builds may return arbitrary custom values in search summaries: treat unexpected fields as potentially secret, never quote them, and do not claim that no secret reached the tool response on such a build.
+2. 根据返回的 id、title、kind、host、username 确定目标。名称相同且无法区分时，让用户选择；用户直接给出 ID 时可直接读取。
+3. 用 `vault_get` 读取选中的 ID。用户指定字段时传 fields；需要完整条目时省略 fields。
 
-| Task | Required distinctions and fields |
-|---|---|
-| Website login | Only needed `url/username/email/password`; verify the intended domain before submitting. |
-| SSH password | `host/port/username/sshAuth/password`. A server password is not the vault master password. |
-| SSH key/certificate | `host/port/username/sshAuth/privateKey`; add `certificate/keyPassphrase` only if needed. Do not enter a key as a password. |
-| API/OAuth | Only necessary `apiKey/secret/accessToken/refreshToken`; verify the service and endpoint. Refreshing tokens or changing remote state still needs task authorization. |
-| One-time code | Prefer `vault_totp({id:"<confirmed ID>"})`; do not retrieve `otpSecret`. Codes are sensitive too. |
-| Custom field | Model-tool field filtering is top-level; do not assume `fields.someName` works. Reading the whole custom map may expose unrelated secrets. Prefer an authorized CLI single-field consumer or explain the limitation. |
+~~~json
+{"id":"<搜索结果中的 ID>","fields":["host","port","username","sshAuth","password"]}
+~~~
 
-Missing fields are a reason to ask or stop, not to invent values. `redact:true` and `--mask` are convenience masks, not guarantees that arbitrary custom data is sanitized.
+其他例子：
 
-## 3. 安全交接 / Safe use and verification
+~~~json
+{"id":"<条目 ID>","fields":["apiKey"]}
+{"id":"<条目 ID>","fields":["privateKey","certificate","keyPassphrase"]}
+{"id":"<条目 ID>"}
+~~~
 
-- Prefer a consumer process that obtains its required field privately, or pass the tool value directly to a tool supporting secret input. Do not route secrets through chat, screenshots, debug output, clipboard history or command-line arguments.
-- Never interpolate a password/token/private key into a shell command, URL, Git remote or inline Authorization argument. Disable shell tracing. Pipes/stdin/short-lived child environments still require appropriate tool support; do not call them universally invisible.
-- For SSH, verify a new/changed host-key fingerprint instead of disabling host checking. Native `ssh` may require interactive password entry unsupported by the available execution tool. Explain this limitation; do not install a workaround or display the password just to finish.
-- Use a temporary private-key file only when the authorized consumer requires it, with restricted permissions, no overwrite, and finally cleanup. Do not silently create a permanent secret file.
-- Verify that login/request actually completed before saying connected/succeeded. Report the selected entry, authentication type, authorized action and non-secret outcome; finding a record is not a successful connection.
-- Never write secret values into repository files, README, Skill, Git commits, audit details or final answers. Minimize their lifetime and do not dump variables on failure.
+`vault_get.fields` 选择顶层字段。读取自定义字段对象时使用 `fields:["fields"]`；CLI 可以用 `--field fields.customName` 选择一个自定义字段。
 
-## 4. 锁库与权限 / Availability and permission
+## 将字段用于实际操作
 
-- Unopened/locked vault: ask the user to open/unlock it in Settings → Password Manager (1pass) / 设置 → 密码管理(1pass). Never ask for the master password in chat or read host configuration/encrypted files to bypass it.
-- Follow actual runtime approval rules. Ordinary read and write rules differ in ASK mode. If a high-sensitivity read requires approval, wait; rejection, skipped approval or unavailable approval is not authorization.
-- READONLY permits allowed reads, not adds/updates/deletes. Do not change access mode, enable tool groups or export the vault just to retrieve a record.
-- If vault tools are absent, state that the plugin/tools need enabling; this skill itself registers no credential or SSH tools.
-- Changing entries, auto-capture, bulk export and GitHub sync require separate user intent. Do not look in Git history instead of the current local vault.
+| 类型 | 常用字段 | 使用方式 |
+|---|---|---|
+| SSH 密码认证 | host、port、username、sshAuth、password | 把连接参数和 password 传给支持密码认证的 SSH／远程执行工具。 |
+| SSH 私钥／证书 | host、port、username、privateKey、certificate、keyPassphrase | 依据工具接口提供私钥内容、密钥文件、证书和口令。 |
+| 网站登录 | url、username、email、password | 把字段填入对应登录操作。 |
+| API Key／OAuth | apiKey、secret、accessToken、refreshToken | 按目标接口要求设置请求参数、Header 或客户端认证配置。 |
+| TOTP | 条目 ID | 使用 `vault_totp({id:"<条目 ID>"})` 获取当前验证码。 |
 
-## Optional standalone CLI / 独立脚本
+认证字段可以直接用于现有工具的参数、交互输入、stdin 或进程环境；具体选择取决于该工具支持的接口。对于 SSH 密码登录，优先选用具备密码认证接口的客户端；普通 ssh 命令可能需要交互式输入。
 
-Use only when the CLI is installed, the process already has a legitimate secure unlock source, and a script consumer is needed:
+执行用户指定的连接或请求后，检查返回结果，再说明完成情况。查找、取值、认证和执行是不同步骤；哪一步失败就报告哪一步及其错误。
+
+## CLI 用法
+
+已安装 `dsh-vault` 时：
 
 ~~~sh
+dsh-vault list --json
 dsh-vault get "demo-server" --field host
 dsh-vault get "demo-server" --field username
 dsh-vault get "demo-server" --field port
+dsh-vault get "demo-server" --field password
+dsh-vault get "demo-api" --field apiKey
+dsh-vault get "demo-server" --all
+dsh-vault totp "demo-account" --json
 ~~~
 
-`show`/`list --json` omit secret fields, notes and custom maps, but still expose the full public metadata projection. Metadata can itself be sensitive, so use explicit fields for this workflow. Bare `get` outputs the primary secret. Prefer explicit `--field`; do not run bare get for a summary, `--all`, or unrelated vault-wide `env`.
+`get` 未指定字段时返回条目的主凭据；`--all` 返回完整条目。
 
-The standalone CLI does not inherit the GUI's in-memory key. Its master-password sources are `--password-stdin`, process `DSH_VAULT_MASTER_PASSWORD` / `DSH_VAULT_PASSWORD`, then an interactive prompt. Use an existing authorized safe source; never put the master password in commands/chat/persistent config. Without a safe source, prefer unlocked plugin tools or let the user run the CLI in their own local terminal.
+独立 CLI 与 GUI 是不同进程，不自动继承 GUI 内存中的解锁材料。CLI 的主密码来源为 `--password-stdin`、`DSH_VAULT_MASTER_PASSWORD`／`DSH_VAULT_PASSWORD` 或本机交互输入。
 
-Secret stdout must be captured privately by the consumer, not returned to the model as terminal output. The CLI is a direct file client and does not promise DSH per-tool approval inheritance; never use it to bypass locking, approval, readonly or a refusal. CLI `--field fields.customName` can select one custom value; model-tool filtering is different.
+## 功能未就绪时
 
-## 默认交付 / Default response
-
-Summary: “Found demo-server: SSH, host…, username…, port…, password/key authentication. No secrets read; not connected.”
-
-After use: “Used the entry for the requested operation without echoing authentication material; verified result…”. On failure distinguish no match, ambiguity, locked vault, missing fields, unsupported safe consumer, connection failure or permission failure, without exposing secrets.
+- 密码库尚未打开或已锁定：在“设置 → 密码管理(1pass)”打开／解锁后继续。
+- 缺少 vault 工具：检查插件是否启用以及当前工具档位是否包含相应功能。
+- 找不到条目或缺少连接字段：说明没有匹配的记录或具体缺少哪些字段。
+- SSH／API 工具不支持所需认证方式：说明当前工具能力和实际需要的接口。
